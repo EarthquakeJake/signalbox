@@ -1,5 +1,5 @@
 import type { Board, Lane, StationId } from '../types'
-import { C, STATION_TONE, WIDE_HEIGHT, frame, agoOf, branchIn, esc, fit, fitMono, laneCard, laneColours, laneLine, stagingWords, text, widthOf } from './lanes'
+import { C, STATION_TONE, WIDE_HEIGHT, frame, isMadeUpName, agoOf, branchIn, esc, fit, fitMono, laneCard, laneColours, laneLine, stagingWords, text, widthOf } from './lanes'
 
 export { fit }
 
@@ -99,6 +99,19 @@ export type TrackNames = { staging: string; live: string }
 type Here = Extract<NonNullable<Board['repo']>, { kind: 'repo' }>
 
 const plural = (n: number, one: string, many = `${one}s`): string => `${n} ${n === 1 ? one : many}`
+
+/**
+ * Your branch in copper at (x, y) in `room` px: its name in mono, or, where a tool
+ * made the name up and its newest commit has a subject, that subject instead.
+ */
+function yourBranch(here: Here | undefined, x: number, y: number, room: number): string {
+  if (here === undefined) return ''
+  const entry = [...(here.lanes ?? []).flatMap(lane => lane.open ?? []), ...(here.loose ?? [])].find(b => b.name === here.branch)
+  const subject = entry?.subject?.trim() ?? ''
+  if (subject !== '' && isMadeUpName(here.branch)) return text(x, y, esc(fit(subject, room)), { fill: C.hl })
+
+  return text(x, y, esc(branchIn(here.branch, room)), { font: 'mono', fill: C.hl })
+}
 
 /** The words that say how your branch's lane was found, where it was not by name. */
 const markerOf = (here: Here | undefined, lanes: readonly Lane[]): string =>
@@ -227,7 +240,7 @@ function tallRelease(b: Board, names: TrackNames, now: number, flow: Wear): { sv
   } else {
     const middle = fit(stageLabel, 120)
     const half = widthOf(middle) / 2
-    out += text(16, ly, esc(branchIn(branchLabel, 220 - half - 12 - 16)), { font: 'mono', fill: C.hl })
+    out += yourBranch(here, 16, ly, 220 - half - 12 - 16)
     out += text(220, ly, esc(middle), { anchor: 'middle', fill: stageState === 'behind' ? C.hl : C.muted })
     if (liveLabel !== '') out += text(424, ly, esc(fitMono(liveLabel, 424 - (220 + half + 12))), { font: 'mono', anchor: 'end' })
   }
@@ -272,7 +285,7 @@ function wideLanes(here: Here, lanes: readonly Lane[], now: number, flow: Wear):
   const count = `${lanes.length} ${lanes.length === 1 ? 'lane' : 'lanes'}${here.merged === undefined || here.merged === 0 ? '' : ` · ${here.merged} merged`}`.toUpperCase()
   let out = text(660, 28, count, { weight: 600, spacing: 0.6 })
   if (marker !== '') out += text(884, 28, esc(fit(marker, 224 - widthOf(count, 11, 600) - 16)), { anchor: 'end' })
-  out += text(660, 46, esc(branchIn(here.branch, 224)), { font: 'mono', fill: C.hl })
+  out += yourBranch(here, 660, 46, 224)
 
   const litAt = lit === undefined ? -1 : shown.indexOf(lit)
   if (litAt >= 0) {

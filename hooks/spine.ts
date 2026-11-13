@@ -1,252 +1,417 @@
 import type { Board, Lane, OpenBranch, StationId } from '../types'
 import { NAMES } from './draw'
-import { C, FAR_BEHIND, WIDE_HEIGHT, frame as frameView, STALE_DAYS, STATION_TONE, TONE, agoOf, branchIn, esc, fit, fitMono, isMadeUpName, laneColours, laneTile, line, monoWidth, stagingWords, text, widthOf } from './lanes'
-import type { Piece } from './lanes'
+import {
+  C, FAR_BEHIND, STATION_TONE, TONE, WIDE_HEIGHT, agoOf, branchIn, esc, fit, fitMono, frame, isMadeUpName,
+  laneColours, laneTile, liveWords, monoWidth, text, widthOf,
+} from './lanes'
 
-// The spine view: the trunk as one line, every open branch joined to it where
-// it forked, and your own work, staging and releases beside it.
+// The spine view, round 2: the lane tree. Main is the trunk; each lane joins it
+// with its tile, name, live release and UAT state, and its open branches hang
+// under it, newest first, each said by what it is for (its newest commit's
+// subject) before its name. Tall, main runs down the left; wide, along the top
+// with the lanes hanging from it as columns. Claude has a full ring at the top
+// (tall) or the left (wide). There is no legend and no explaining text.
 //
-// The scale. A branch's fork is placed by how many commits the trunk has taken
-// since it, its `behind`, on a log scale: each doubling of `behind` moves the
-// fork SPINE_STEP pixels further from the trunk's tip. So 1 behind sits one
-// step out, 3 behind two, 7 three, 100 about 6.7 and 1000 about 10. A
-// branch a few commits old and one three hundred commits old both read, and
-// the gap between 90 and 110 behind stays small, as it should.
-// Releases carry a date but no commit distance, so they are listed beside the
-// spine in order rather than pinned to it.
-
-/** Pixels per doubling of commits behind. */
-export const SPINE_STEP = 40
-/** Past this many commits behind, every fork sits at the end of the spine. */
-const SPINE_MOST = 2047
-const along = (behind: number): number => Math.round(SPINE_STEP * Math.log2(1 + Math.min(Math.max(behind, 0), SPINE_MOST)))
+// Lane order (Jake's pick, rule c): closest to main first, by the fewest commits
+// behind among a lane's branches; a tie goes to the lane that moved last. Parked
+// lanes, then the branches in no lane, always close the list. Within a lane,
+// branches are newest first.
 
 type Here = Extract<NonNullable<Board['repo']>, { kind: 'repo' }>
-/** An open branch to draw, with the lane it is in, if any. */
-type Item = { b: OpenBranch; lane?: Lane; colour: string }
+type Item = { b: OpenBranch; lane?: Lane; colour: string; isYours: boolean }
+type Group = { lane: Lane; colour: string; rows: Item[]; isLoose: boolean; moved: number; nearest: number }
 
 const STATIONS: StationId[] = ['you', 'model', 'memory', 'files', 'shell', 'network', 'browser', 'agents', 'skills', 'hooks']
 const LOOSE: Lane = { name: 'No lane', branches: 0, isHere: false }
+const MERGED_ICON = '<path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/>'
 
-const dashed = (d: string, ink: string, width = 1.5): string => `<path d="${d}" fill="none" stroke="${ink}" stroke-width="${width}" stroke-dasharray="4 3"/>`
-const solid = (d: string, ink: string, width = 1.5): string => `<path d="${d}" fill="none" stroke="${ink}" stroke-width="${width}"/>`
-const isFar = (b: OpenBranch): boolean => b.behind >= FAR_BEHIND
-const isStale = (b: OpenBranch, now: number): boolean => now - b.updatedAt > STALE_DAYS * 86400000
+const plural = (n: number, one: string, many = `${one}s`): string => `${n} ${n === 1 ? one : many}`
+const hair = (x1: number, x2: number, y: number): string => `<path d="M${x1} ${y + 0.5}H${x2}" fill="none" stroke="${C.line}" stroke-width="1"/>`
+const mergedWords = (here: Here): string => (here.merged === undefined || here.merged === 0 ? 'No merged branches' : `${plural(here.merged, 'merged branch', 'merged branches')}`)
+const merged = (here: Here, x: number, y: number, size: number): string =>
+  `<g transform="translate(${x} ${y - 12}) scale(${(size / 18).toFixed(4)})" fill="none" stroke="${C.muted}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${MERGED_ICON}</g>` +
+  text(x + 22, y, esc(mergedWords(here)), { size })
 
-/** Every open branch but yours: the lanes' own, then those in no lane, nearest the trunk's tip first. */
-function openItems(here: Here, colours: Map<Lane, string>): Item[] {
-  const seen = new Set<string>([here.branch])
+/**
+ * What a branch is for, from its newest commit: a merge's own words after the
+ * colon, without a lane's name in front, starting with a capital. Its name where
+ * there is no subject.
+ */
+function describe(b: OpenBranch, laneNames: readonly string[]): string {
+  const subject = b.subject?.trim() ?? ''
+  if (subject === '') return b.name
+  let words = subject.replace(/^Merge [^:]+: /, '')
+  for (const name of laneNames) if (words.toLowerCase().startsWith(`${name.toLowerCase()}: `)) words = words.slice(name.length + 2)
+  return words.charAt(0).toUpperCase() + words.slice(1)
+}
+
+/** How far behind main, in words and a tone, only where it matters: 20 or more, red from FAR_BEHIND. */
+const behindWords = (b: OpenBranch): { words: string; ink: string } | undefined =>
+  b.behind >= FAR_BEHIND ? { words: `${b.behind} behind`, ink: TONE.danger.ink } : b.behind >= 20 ? { words: `${b.behind} behind`, ink: TONE.warn.ink } : undefined
+
+/** A lane's release state in a few words: what UAT holds against live. */
+function uatWords(lane: Lane): string {
+  if (lane.isParked === true) return 'parked'
+  if (lane.isStagingLive === true) return 'UAT same as live'
+  if (lane.staging === undefined) return 'no UAT yet'
+  return lane.staging.behind > 0 ? `UAT ${lane.staging.behind} behind` : 'UAT ahead of live'
+}
+
+/** A small pill holding a live tag, tinted in its lane's colour, starting at `x`. Returns the drawing and its right edge. */
+function livePill(x: number, cy: number, tag: string, colour: string, most = 140): { svg: string; right: number } {
+  const words = fitMono(liveWords(tag), most)
+  const w = Math.ceil(monoWidth(words) + 16)
+  return {
+    right: x + w,
+    svg:
+      `<rect x="${x + 0.5}" y="${cy - 9.5}" width="${w - 1}" height="19" rx="9.5" fill="${colour}" fill-opacity="0.12" stroke="${colour}" stroke-opacity="0.45"/>` +
+      text(x + w / 2, cy + 4, esc(words), { font: 'mono', anchor: 'middle', fill: C.text }),
+  }
+}
+
+/** Text wrapped to a width over at most `most` lines, the last one cut. */
+function wrap(words: string, width: number, size: number, most: number): string[] {
+  const lines: string[] = []
+  let rest = words.split(' ')
+  while (rest.length > 0 && lines.length < most) {
+    let take = 1
+    while (take < rest.length && widthOf(rest.slice(0, take + 1).join(' '), size) <= width) take += 1
+    let line = rest.slice(0, take).join(' ')
+    rest = rest.slice(take)
+    if (lines.length === most - 1 && rest.length > 0) line = `${line} ${rest.join(' ')}`
+    lines.push(fit(line, width, size))
+  }
+
+  return lines
+}
+
+/** Every open branch, with its lane and colour; yours is marked, to be drawn in copper in its own lane. */
+function itemsOf(here: Here): Item[] {
+  const colours = laneColours(here.lanes ?? [])
+  const seen = new Set<string>()
   const out: Item[] = []
   for (const lane of here.lanes ?? []) {
     for (const b of lane.open ?? []) {
       if (seen.has(b.name)) continue
       seen.add(b.name)
-      out.push({ b, lane, colour: colours.get(lane) ?? C.muted })
+      out.push({ b, lane, colour: colours.get(lane) ?? C.muted, isYours: b.name === here.branch })
     }
   }
   for (const b of here.loose ?? []) {
     if (seen.has(b.name)) continue
     seen.add(b.name)
-    out.push({ b, colour: C.muted })
+    out.push({ b, colour: C.muted, isYours: b.name === here.branch })
   }
 
-  return out.sort((a, z) => a.b.behind - z.b.behind || z.b.updatedAt - a.b.updatedAt)
+  return out
 }
 
-/**
- * The open branches there is room for: those far behind first, the furthest of
- * them, since they are what the spine is for; then the nearest to the tip.
- * Returned in the drawing's order, nearest the tip first.
- */
-function pick(items: Item[], most: number): Item[] {
-  const far = items.filter(i => isFar(i.b)).sort((a, z) => z.b.behind - a.b.behind).slice(0, Math.min(3, most))
-  const near = items.filter(i => !far.includes(i)).slice(0, most - far.length)
-  return [...near, ...far].sort((a, z) => a.b.behind - z.b.behind || z.b.updatedAt - a.b.updatedAt)
+/** Whether a branch carries a subject to lead with; without one its name is said once. */
+const hasSubject = (b: OpenBranch): boolean => (b.subject?.trim() ?? '') !== ''
+
+/** Each lane with its open branches, newest first, then the branches in no lane as a group of their own. */
+function groupsOf(here: Here): Group[] {
+  const colours = laneColours(here.lanes ?? [])
+  const all = itemsOf(here)
+  const make = (lane: Lane, colour: string, rows: Item[], isLoose: boolean): Group => ({
+    lane,
+    colour,
+    rows: [...rows].sort((a, z) => z.b.updatedAt - a.b.updatedAt),
+    isLoose,
+    moved: Math.max(0, ...rows.map(i => i.b.updatedAt), ...(isLoose ? [] : (lane.releases ?? []).map(r => r.at)), isLoose ? 0 : lane.staging?.updatedAt ?? 0),
+    nearest: rows.length === 0 ? Infinity : Math.min(...rows.map(i => i.b.behind)),
+  })
+  const out = (here.lanes ?? []).map(lane => make(lane, colours.get(lane) ?? C.muted, all.filter(i => i.lane === lane), false))
+  const loose = all.filter(i => i.lane === undefined)
+  if (loose.length > 0) out.push(make(LOOSE, C.muted, loose, true))
+
+  return out
 }
 
-/** `app-v3.14.0` reads as `3.14.0`: the lane's word and a leading `v` come off, the title already names the lane. */
-const tagWords = (tag: string): string => tag.replace(/^[A-Za-z][A-Za-z_]*[-/]/, '').replace(/^v(?=\d)/, '')
-
-/**
- * The few words under an open branch's lead line: how far ahead, a warning where
- * one applies, then its commit subject (when the name, not the subject, led) or its lane.
- */
-function branchPieces(item: Item, now: number): Piece[] {
-  const b = item.b
-  const subject = b.subject?.trim() ?? ''
-  const tail = subject !== '' && !isMadeUpName(b.name) ? subject : item.lane?.name ?? 'no lane'
-  return [
-    { words: `+${b.ahead}`, fill: C.muted },
-    ...(isFar(b) ? [{ words: ` · ${b.behind} behind`, fill: TONE.danger.ink }] : isStale(b, now) ? [{ words: ' · stale', fill: TONE.warn.ink }] : []),
-    { words: ` · ${tail}`, fill: C.muted },
-  ]
+/** Rule (c): closest to main first, a tie to the lane that moved last; parked lanes, then branches in no lane, last. */
+function ordered(groups: Group[]): Group[] {
+  const tail = (g: Group): number => (g.isLoose ? 2 : g.lane.isParked === true ? 1 : 0)
+  return [...groups].sort((a, z) => tail(a) - tail(z) || a.nearest - z.nearest || z.moved - a.moved)
 }
 
-/**
- * An open branch's card: its lane's tile, then its name, or for a made-up name
- * its commit subject, and how it stands.
- */
-function branchCard(item: Item, x: number, y: number, w: number, now: number): string {
-  const subject = item.b.subject?.trim() ?? ''
-  const lead =
-    subject !== '' && isMadeUpName(item.b.name)
-      ? text(x + 38, y + 19, esc(fit(subject, w - 46)), { fill: C.text })
-      : text(x + 38, y + 19, esc(branchIn(item.b.name, w - 46)), { font: 'mono', fill: C.text })
-  return (
-    `<rect x="${x + 0.5}" y="${y + 0.5}" width="${w - 1}" height="43" rx="9.5" fill="${C.node}" stroke="${C.nodeLine}"/>` +
-    laneTile(item.lane ?? LOOSE, x + 8, y + 11, 22, item.colour) +
-    lead +
-    line(x + 38, y + 35, branchPieces(item, now), w - 46)
-  )
-}
-
-/** Your lane: the lit one, else none. */
-const yourLane = (here: Here): Lane | undefined => (here.lanes ?? []).find(lane => lane.isHere)
-
-/** Your branch's own open-branch entry, for when its newest commit was made. */
+/** Your own branch's entry, for its subject. */
 const yourEntry = (here: Here): OpenBranch | undefined =>
   (here.lanes ?? []).flatMap(lane => lane.open ?? []).find(b => b.name === here.branch) ?? (here.loose ?? []).find(b => b.name === here.branch)
 
-/** What your working copy holds, in the tag's words. */
-function workWords(b: Board, here: Here, isShort: boolean): string {
-  const files = (n: number): string => `${n} file${n === 1 ? '' : 's'}`
-  if (here.dirty > 0) return isShort ? `${files(here.dirty)} · not committed` : `${files(here.dirty)} changed · not committed`
-  return b.edited.length > 0 ? `${b.edited.length} edited · ${isShort ? '' : 'all '}committed` : 'nothing to commit'
+/** What you are on, in the words that say most: main, a chosen branch name, or for a made-up name its subject. */
+function youAreOn(here: Here, laneNames: readonly string[]): { words: string; isMono: boolean } {
+  if (here.trunk === undefined) return { words: (here.trunkRef ?? 'main').replace(/^origin\//, ''), isMono: true }
+  const entry = yourEntry(here)
+  if (entry?.subject !== undefined && entry.subject.trim() !== '' && isMadeUpName(here.branch)) return { words: describe(entry, laneNames), isMono: false }
+  return { words: here.branch, isMono: true }
 }
 
-/** One release to list: its tag, when it was made, whether it is live, and the words beside it. */
-type Release = { name: string; at?: number; isLive: boolean; note: string }
+/** What is waiting to be committed, in plain words. */
+const workWords = (here: Here): string => (here.dirty > 0 ? `${plural(here.dirty, 'file')} not committed` : 'nothing to commit')
+
+/** "You are on main · 3 files changed since the last commit", on one line in `w`, or two where `twoLines`. */
+function youLine(here: Here, laneNames: readonly string[], x: number, y: number, w: number, twoLines = false): string {
+  const on = youAreOn(here, laneNames)
+  const room = twoLines ? w - widthOf('You are on ', 12) : Math.min(220, w - widthOf('You are on ', 12) - 80)
+  // branchIn measures mono at 11 px; this line is 12, so its room is scaled to match.
+  const name = on.isMono ? branchIn(on.words, (room * 11) / 12) : fit(on.words, room, 12)
+  const work = workWords(here)
+  if (twoLines) {
+    return youHead(on, name, x, y) + text(x, y + 17, esc(fit(work.charAt(0).toUpperCase() + work.slice(1), w, 12)), { size: 12, fill: here.dirty > 0 ? C.text : C.muted })
+  }
+  const used = widthOf('You are on ', 12) + (on.isMono ? monoWidth(name, 12) : widthOf(name, 12))
+  // A text's leading space is dropped when drawn, so the gap before the dot is placed, not typed.
+  const tail = fit(`· ${work}`, w - used - 4, 12)
+  return youHead(on, name, x, y) + (tail === '…' ? '' : text(x + used + 4, y, esc(tail), { size: 12, fill: here.dirty > 0 ? C.text : C.muted }))
+}
+
+/** "You are on" and the name, as two texts so each is measured and drawn in its own face. */
+function youHead(on: { isMono: boolean }, name: string, x: number, y: number): string {
+  const lead = widthOf('You are on ', 12)
+  return text(x, y, 'You are on', { size: 12 }) + text(x + lead, y, esc(name), { font: on.isMono ? 'mono' : 'sans', size: 12, fill: C.hl })
+}
 
 /**
- * The releases to list. In a lane, that lane's own, newest first, the newest
- * live. In no lane (on the trunk, say), what is live in every lane, each named
- * by its lane. With no lanes at all, the trunk's newest tag.
+ * Claude's ring: Claude in the middle, its ten stations round it (coloured once
+ * used this turn, silk while running), with clear room round the whole ring.
  */
-function releasesOf(here: Here): { title: string; rows: Release[] } {
-  const lanes = here.lanes ?? []
-  const lane = yourLane(here)
-  if (lane !== undefined && ((lane.releases ?? []).length > 0 || lane.live !== undefined)) {
-    const tags = (lane.releases ?? []).length > 0 ? (lane.releases ?? []).slice(0, 4) : [{ name: lane.live as string }]
-    const rows = tags.map((r, at) => ({ name: r.name, at: 'at' in r ? r.at : undefined, isLive: at === 0, note: at === 0 ? 'live' : '' }))
-    // A lane already named for its releases keeps its name alone, rather than `Release releases`.
-    return { title: /release/i.test(lane.name) ? lane.name : `${lane.name} releases`, rows }
-  }
-  const live = lanes.filter(l => (l.releases ?? []).length > 0 || l.live !== undefined).slice(0, 4)
-  if (live.length > 0) {
-    return {
-      title: 'Live releases',
-      rows: live.map(l => ({ name: l.releases?.[0]?.name ?? (l.live as string), at: l.releases?.[0]?.at, isLive: true, note: l.name })),
-    }
-  }
-
-  return here.tag === undefined ? { title: '', rows: [] } : { title: 'Releases', rows: [{ name: here.tag, isLive: true, note: 'live' }] }
-}
-
-/** The words beside a release's pill: its note, then its age. */
-const releaseWords = (r: Release, now: number): string => [r.note, r.at === undefined ? '' : agoOf(r.at, now)].filter(w => w !== '').join(' · ')
-
-/** A pill starting at `x`, centred on `cy`; returns the drawing and where it ends. */
-function pillAt(x: number, cy: number, words: string, isLive: boolean): { svg: string; right: number } {
-  const w = Math.ceil(monoWidth(words) + 20)
-  return {
-    right: x + w,
-    svg:
-      `<rect x="${x + 0.5}" y="${cy - 10.5}" width="${w - 1}" height="21" rx="10.5" fill="${C.canvas}" stroke="${isLive ? C.accent : C.nodeLine}"/>` +
-      text(x + w / 2, cy + 4, esc(words), { font: 'mono', anchor: 'middle', fill: isLive ? C.accent : C.muted }),
-  }
-}
-
-/** A path from (x1, y1) to (x2, y2): along the first axis to a lane, along the other to the target, with rounded turns. */
-function elbow(from: [number, number], lane: number, to: [number, number], isVertical: boolean): string {
-  const [x1, y1] = from
-  const [x2, y2] = to
-  if (!isVertical) {
-    // Horizontal first to the lane at x = lane, vertical to y2, horizontal to x2.
-    if (Math.abs(y1 - y2) < 1) return `M${x1} ${y1}H${x2}`
-    const r = Math.min(6, Math.abs(y1 - y2) / 2, Math.abs(lane - x1), Math.abs(x2 - lane))
-    const sx = Math.sign(lane - x1)
-    const sy = Math.sign(y2 - y1)
-    const tx = Math.sign(x2 - lane)
-    return `M${x1} ${y1}H${lane - sx * r}Q${lane} ${y1} ${lane} ${y1 + sy * r}V${y2 - sy * r}Q${lane} ${y2} ${lane + tx * r} ${y2}H${x2}`
-  }
-  // Vertical first to the lane at y = lane, horizontal to x2, vertical to y2.
-  if (Math.abs(x1 - x2) < 1) return `M${x1} ${y1}V${y2}`
-  const r = Math.min(6, Math.abs(x1 - x2) / 2, Math.abs(lane - y1), Math.abs(y2 - lane))
-  const sy = Math.sign(lane - y1)
-  const sx = Math.sign(x2 - x1)
-  const ty = Math.sign(y2 - lane)
-  return `M${x1} ${y1}V${lane - sy * r}Q${x1} ${lane} ${x1 + sx * r} ${lane}H${x2 - sx * r}Q${x2} ${lane} ${x2} ${lane + ty * r}V${y2}`
-}
-
-/** The small Claude ring: Claude in the middle, its stations round it, the busy ones lit and named beside it. */
-function claudeRing(b: Board, cx: number, cy: number, labelX: number): string {
-  let out = `<circle cx="${cx}" cy="${cy}" r="36" fill="none" stroke="${C.nodeLine}" stroke-dasharray="3 3"/>`
-  if (b.isWorking) out += `<circle cx="${cx}" cy="${cy}" r="25" fill="none" stroke="${C.ring}" stroke-width="4"/>`
-  out += `<circle cx="${cx}" cy="${cy}" r="22.5" fill="${C.node}" stroke="${b.isWorking ? C.accent : C.nodeLine}" stroke-width="1.5"/>`
-  out += text(cx, cy + 3, 'CLAUDE', { font: 'mono', size: 8, weight: 500, spacing: 0.5, anchor: 'middle', fill: C.text })
+function ring(b: Board, cx: number, cy: number): string {
+  let out = `<circle cx="${cx}" cy="${cy}" r="42" fill="none" stroke="${C.nodeLine}" stroke-dasharray="2 4"/>`
+  if (b.isWorking) out += `<circle cx="${cx}" cy="${cy}" r="28" fill="none" stroke="${C.ring}" stroke-width="4"/>`
+  out += `<circle cx="${cx}" cy="${cy}" r="25.5" fill="${C.node}" stroke="${b.isWorking ? C.accent : C.nodeLine}" stroke-width="1.5"/>`
+  out += text(cx, cy + 3.5, 'CLAUDE', { font: 'mono', size: 9.5, weight: 500, spacing: 1, anchor: 'middle', fill: C.text })
   STATIONS.forEach((id, at) => {
-    const angle = -Math.PI / 2 + (at * 2 * Math.PI) / STATIONS.length
-    const x = cx + 36 * Math.cos(angle)
-    const y = cy + 36 * Math.sin(angle)
+    const a = -Math.PI / 2 + (at * 2 * Math.PI) / STATIONS.length
+    const px = (cx + 42 * Math.cos(a)).toFixed(1)
+    const py = (cy + 42 * Math.sin(a)).toFixed(1)
     const isLive = (b.live[id] ?? 0) > 0
+    const tone = STATION_TONE[id] ?? C.muted
     const isUsed = (b.counts[id] ?? 0) > 0
-    out += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${isLive ? 5 : 4}" fill="${isLive ? C.accent : C.node}" stroke="${isLive ? C.accent : isUsed ? STATION_TONE[id] ?? C.muted : C.nodeLine}" stroke-width="1.5"/>`
-  })
-  // The stations named beside the ring: those running first, then the busiest.
-  const named = STATIONS.filter(id => (b.counts[id] ?? 0) > 0 || (b.live[id] ?? 0) > 0)
-    .sort((a, z) => Number((b.live[z] ?? 0) > 0) - Number((b.live[a] ?? 0) > 0) || (b.counts[z] ?? 0) - (b.counts[a] ?? 0))
-    .slice(0, 4)
-  if (named.length === 0) return out + text(labelX, cy + 4, b.isWorking ? 'Thinking' : 'Waiting for you')
-  named.forEach((id, at) => {
-    const isLive = (b.live[id] ?? 0) > 0
-    out += text(labelX, cy - 20 + at * 16, esc(`${NAMES[id]} ×${b.counts[id] ?? 0}`), { font: 'mono', fill: isLive ? C.text : C.muted })
+    out += isLive
+      ? `<circle cx="${px}" cy="${py}" r="9" fill="none" stroke="${C.ring}" stroke-width="4"/><circle cx="${px}" cy="${py}" r="6" fill="${C.accent}"/>`
+      : `<circle cx="${px}" cy="${py}" r="5" fill="${isUsed ? tone : C.node}" stroke="${isUsed ? tone : C.nodeLine}" stroke-width="1.5"/>`
   })
 
   return out
 }
 
-/** A legend item: a short stroke and its words. Returns the drawing and its width. */
-function legendItem(x: number, y: number, words: string, ink: string, kind: 'solid' | 'dashed' | 'dot'): { svg: string; w: number } {
-  const mark =
-    kind === 'dot'
-      ? `<circle cx="${x + 6}" cy="${y - 4}" r="4" fill="${ink}"/>`
-      : kind === 'dashed'
-        ? dashed(`M${x} ${y - 4}H${x + 14}`, ink)
-        : solid(`M${x} ${y - 4}H${x + 14}`, ink, 1.75)
-  return { svg: mark + text(x + 20, y, esc(words)), w: 20 + widthOf(words) + 16 }
+/** What Claude is doing, in a few words. */
+function doingWords(b: Board): string {
+  const running = [...b.rows].reverse().find(r => r.status === 'run')
+  return running !== undefined ? running.label : b.isWorking ? 'Thinking' : 'Waiting for you'
 }
 
-/** Your branch's card: the lit lane's tile, its name in copper, where it stands and what is uncommitted. */
-function yourCard(b: Board, here: Here, x: number, y: number, w: number, colour: string, now: number, isShort: boolean): string {
-  const entry = yourEntry(here)
-  const lane = yourLane(here)
-  const onTrunk = here.trunk === undefined
-  const pieces: Piece[] = onTrunk
-    ? [{ words: 'on the trunk', fill: C.muted }]
-    : [
-        { words: `+${here.ahead}`, fill: C.muted },
-        { words: ` · ${here.behind} behind`, fill: here.behind >= FAR_BEHIND ? TONE.danger.ink : C.muted },
-        ...(entry === undefined ? [] : [{ words: ` · ${agoOf(entry.updatedAt, now)}`, fill: C.muted }]),
-      ]
-  return (
-    `<rect x="${x - 2}" y="${y - 2}" width="${w + 4}" height="62" rx="12" fill="none" stroke="${C.ring}" stroke-width="4"/>` +
-    `<rect x="${x + 0.5}" y="${y + 0.5}" width="${w - 1}" height="57" rx="9.5" fill="${C.node}" stroke="${C.accent}"/>` +
-    laneTile(lane ?? LOOSE, x + 8, y + 8, 20, colour) +
-    text(x + 36, y + 22, esc(branchIn(here.branch, w - 44)), { font: 'mono', fill: C.hl }) +
-    line(x + 10, y + 38, pieces, w - 20) +
-    text(x + 10, y + 52, esc(fitMono(workWords(b, here, isShort), w - 20)), { font: 'mono', fill: here.dirty > 0 ? C.text : C.muted })
-  )
+/** The model, context and call count, in mono. */
+function metaWords(b: Board, withCalls: boolean): string {
+  const model = b.model === undefined ? '' : b.model.replace(/^claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?.*$/, (_m, n: string, major: string, minor?: string) => `${n} ${major}${minor === undefined ? '' : `.${minor}`}`)
+  return [model, b.context === undefined ? '' : `context ${Math.round(b.context)}%`, withCalls ? plural(b.calls, 'call') : ''].filter(s => s !== '').join(' · ')
 }
 
-/** The staging card: which lane's staging, how long since it moved, and whether your work is on it. */
-function stagingCard(lane: Lane | undefined, staging: NonNullable<Lane['staging']>, x: number, y: number, w: number, now: number): string {
-  const words = lane === undefined ? { when: agoOf(staging.updatedAt, now), news: staging.behind > 0 ? `${staging.behind} behind` : '' } : stagingWords(lane, now)
-  return (
-    `<rect x="${x + 0.5}" y="${y + 0.5}" width="${w - 1}" height="39" rx="9.5" fill="rgba(201,139,94,0.14)" stroke="rgba(201,139,94,0.55)"/>` +
-    text(x + 10, y + 17, esc(fit(lane === undefined ? 'On staging' : `On staging · ${lane.name}`, w - 20)), { fill: C.hl }) +
-    // Staging the same as live says so, rather than an age a reader could take for live being out of date.
-    text(x + 10, y + 32, esc(fitMono(lane?.isStagingLive === true ? 'same as live' : words.news === '' ? `since ${words.when}` : `since ${words.when} · ${words.news}`, w - 20)), { font: 'mono' })
-  )
+/** Claude's band across the top of the tall spine: the ring, and beside it what it is doing and the busy stations. */
+function claudeBand(b: Board, x: number, y: number, w: number): string {
+  // The ring with its station halos takes 102 px; it sits 10 px inside the band on every side.
+  const cx = x + 61
+  const cy = y + 61
+  let out = ring(b, cx, cy)
+  const tx = x + 132
+  out += text(tx, y + 36, esc(fit(doingWords(b), w - 132, 14, 600)), { size: 14, weight: 600, fill: C.text })
+  out += text(tx, y + 55, esc(fitMono(metaWords(b, true), w - 132)), { font: 'mono' })
+  // The busy stations as coloured words, running first then by count, in the room beside the ring.
+  const busy = STATIONS.filter(id => (b.counts[id] ?? 0) > 0 || (b.live[id] ?? 0) > 0)
+    .sort((a, z) => Number((b.live[z] ?? 0) > 0) - Number((b.live[a] ?? 0) > 0) || (b.counts[z] ?? 0) - (b.counts[a] ?? 0))
+  let sx = tx
+  let sy = y + 82
+  for (const id of busy) {
+    const isLive = (b.live[id] ?? 0) > 0
+    const words = `${NAMES[id]} ${b.counts[id] ?? 0}`
+    const wd = 12 + widthOf(words) + 14
+    if (sx + wd > x + w) {
+      sx = tx
+      sy += 20
+    }
+    if (sy > y + 102) break
+    out += `<circle cx="${sx + 4}" cy="${sy - 4}" r="4" fill="${isLive ? C.accent : STATION_TONE[id] ?? C.muted}"/>`
+    out += text(sx + 12, sy, esc(words), { fill: isLive ? C.text : C.muted })
+    sx += wd
+  }
+
+  return out
+}
+
+/** Tall: Claude across the top, where you are, then main down the left with each lane joining it and its branches under it. */
+function treeTall(b: Board, here: Here, now: number): string {
+  const W = 440
+  const laneNames = (here.lanes ?? []).map(l => l.name)
+  // Claude's band: 122 px, the ring clear of the band's edges and of the hairline under it.
+  let out = claudeBand(b, 16, 18, W - 32) + hair(16, 424, 144)
+  out += youLine(here, laneNames, 16, 170, W - 32)
+  const trunkX = 26
+  let y = 194
+  out += `<circle cx="${trunkX}" cy="${y + 8}" r="9" fill="${C.canvas}" stroke="${C.accent}" stroke-width="2"/>`
+  out += text(46, y + 13, 'main', { font: 'mono', size: 14, weight: 500, fill: C.text })
+  y += 38
+  const trunkTop = y - 21
+  let lastJoin = trunkTop
+  const groups = ordered(groupsOf(here))
+  if (groups.length === 0) {
+    out += text(46, y + 6, 'No lanes and no open branches', { size: 12 })
+    y += 22
+  }
+  for (const g of groups) {
+    const cy = y + 16
+    lastJoin = cy - 12
+    out += `<g${g.lane.isParked === true ? ' opacity="0.5"' : ''}>`
+    out += `<path d="M${trunkX} ${cy - 14}Q${trunkX} ${cy} ${trunkX + 14} ${cy}H42" fill="none" stroke="${g.colour}" stroke-width="2.25"/>`
+    out += laneTile(g.lane, 44, cy - 13, 26, g.colour)
+    // The live release on the right; the name, and when the lane last moved, in the room it leaves.
+    const pill = g.lane.live === undefined ? undefined : livePill(0, cy - 4, g.lane.live, g.colour, 150)
+    const pillW = pill === undefined ? 0 : pill.right
+    if (g.lane.live !== undefined) out += livePill(424 - pillW, cy - 4, g.lane.live, g.colour, 150).svg
+    out += text(80, cy + 1, esc(fit(g.lane.name, 424 - 80 - pillW - 12, 15, 600)), { size: 15, weight: 600, fill: C.text })
+    const join = g.moved === 0 ? '' : `moved ${agoOf(g.moved, now)}`
+    const joinW = join === '' ? 0 : monoWidth(join) + 12
+    const sub = g.isLoose ? 'not in any lane yet' : `${uatWords(g.lane)}${g.rows.length === 0 ? ' · nothing open' : ''}`
+    const warn = !g.isLoose && g.lane.staging === undefined && g.lane.isParked !== true
+    out += text(80, cy + 19, esc(fit(sub, 424 - 80 - joinW, 12)), { size: 12, fill: warn ? TONE.warn.ink : C.muted })
+    if (join !== '') out += text(424, cy + 19, esc(join), { font: 'mono', anchor: 'end' })
+    y += 48
+    if (g.rows.length > 0) {
+      const stemX = 57
+      out += `<path d="M${stemX} ${y - 4}V${y + (g.rows.length - 1) * 42 + 12}" fill="none" stroke="${g.colour}" stroke-opacity="0.5" stroke-width="1.75"/>`
+      for (const item of g.rows) {
+        // Two lines a branch: what it is for, in full width, then its name, lead and distance.
+        const ry = y + 12
+        // Yours is in copper. Without a subject, the name leads in its place and is not said twice.
+        out += `<path d="M${stemX} ${ry}H68" fill="none" stroke="${g.colour}" stroke-opacity="0.5" stroke-width="1.75"/>`
+        const ink = item.isYours ? C.hl : C.text
+        out += hasSubject(item.b)
+          ? text(74, ry + 4.5, esc(fit(describe(item.b, laneNames), 424 - 74, 13)), { size: 13, fill: ink })
+          : text(74, ry + 4.5, esc(branchIn(item.b.name, ((424 - 74) * 11) / 13)), { font: 'mono', size: 13, fill: ink })
+        const bw = behindWords(item.b)
+        const lead = item.b.ahead > 0 ? `+${item.b.ahead}` : ''
+        const name = hasSubject(item.b) ? `${branchIn(item.b.name, 424 - 74 - monoWidth(` ${lead}`) - (bw === undefined ? 0 : widthOf(` · ${bw.words}`)) - 4)} ` : ''
+        // The name and lead in mono, then the distance in its tone, as two texts so each is measured in its own face.
+        const second = `${name}${lead}`.trim()
+        if (second !== '') out += text(74, ry + 21, esc(second), { font: 'mono', fill: item.isYours ? C.hl : C.muted })
+        if (bw !== undefined) out += text(74 + (second === '' ? 0 : monoWidth(second) + 4), ry + 21, esc(`${second === '' ? '' : '· '}${bw.words}`), { fill: bw.ink })
+        y += 42
+      }
+      y += 4
+    }
+    out += `</g>`
+    y += 12
+  }
+  const trunk = lastJoin > trunkTop ? `<path d="M${trunkX} ${trunkTop}V${lastJoin}" fill="none" stroke="${C.accent}" stroke-opacity="0.35" stroke-width="3" stroke-linecap="round"/>` : ''
+  // The merged branches at the foot.
+  out += hair(16, 424, y) + merged(here, 16, y + 27, 13)
+
+  return frame(W, trunk + out)
+}
+
+/** The wide spine's left column: Claude's ring with clear room, what it is doing, where you are, the merged count. */
+function wideLeft(b: Board, here: Here, laneNames: readonly string[], w: number): string {
+  const cx = 16 + w / 2
+  // The ring with its halos spans cy ± 51: from 20 to 122, clear of the frame and of the words under it.
+  const cy = 71
+  let out = ring(b, cx, cy)
+  out += text(cx, 144, esc(fit(doingWords(b), w, 13, 600)), { size: 13, weight: 600, anchor: 'middle', fill: C.text })
+  out += text(cx, 160, esc(fitMono(metaWords(b, false), w)), { font: 'mono', anchor: 'middle' })
+  out += hair(16, 16 + w, 172)
+  // Where you are, in two short lines, then the merged count at the foot.
+  const on = youAreOn(here, laneNames)
+  const name = on.isMono ? branchIn(on.words, ((w - widthOf('You are on ', 12)) * 11) / 12) : fit(on.words, w - widthOf('You are on ', 12), 12)
+  out += youHead(on, name, 16, 192)
+  const work = here.dirty > 0 ? `${plural(here.dirty, 'file')} not committed` : 'Nothing to commit'
+  out += text(16, 209, esc(fit(work, w, 12)), { size: 12, fill: here.dirty > 0 ? C.text : C.muted })
+  out += merged(here, 16, 244, 12)
+
+  return out
+}
+
+/**
+ * Wide: main runs left to right along the top, its tip at the right, and each
+ * lane hangs from it as a column (tile and name, live release, UAT, up to three
+ * branches), closest to main beside the tip. Parked lanes and branches in no lane
+ * share one quiet column at the far left.
+ */
+function treeWide(b: Board, here: Here, now: number): string {
+  const W = 900
+  const laneNames = (here.lanes ?? []).map(l => l.name)
+  const leftW = 196
+  let out = wideLeft(b, here, laneNames, leftW)
+  const groups = ordered(groupsOf(here))
+  const cols = groups.filter(g => !g.isLoose && g.lane.isParked !== true).reverse()
+  const aside = groups.filter(g => g.isLoose || g.lane.isParked === true)
+  const left = 16 + leftW + 22
+  const right = 884
+  const gap = 14
+  const weight = (g: Group): number => 1.2 + Math.min(g.rows.length, 3) * 0.2
+  const asideWeight = aside.length === 0 ? 0 : 1.5
+  const total = cols.reduce((n, g) => n + weight(g), 0) + asideWeight
+  const room = right - left - gap * (cols.length + (aside.length === 0 ? 0 : 1) - 1)
+  const mainY = 38
+  out += `<path d="M${left} ${mainY}H${right - 26}" fill="none" stroke="${C.accent}" stroke-opacity="0.35" stroke-width="3" stroke-linecap="round"/>`
+  out += `<circle cx="${right - 17}" cy="${mainY}" r="9" fill="${C.canvas}" stroke="${C.accent}" stroke-width="2"/>`
+  out += text(right - 34, mainY - 11, 'main', { font: 'mono', size: 13, weight: 500, anchor: 'end', fill: C.text })
+  if (total === 0) out += text(left, mainY + 34, 'No lanes and no open branches', { size: 12 })
+  let x = left
+  if (aside.length > 0) {
+    // The quiet column: each group's tile and name on one small line, then up to two branches.
+    const w = Math.floor((room * asideWeight) / total)
+    out += `<path d="M${x + 14} ${mainY + 4.5}V${mainY + 22}" fill="none" stroke="${C.wire}" stroke-width="2"/><circle cx="${x + 14}" cy="${mainY}" r="4.5" fill="${C.canvas}" stroke="${C.wire}" stroke-width="2"/>`
+    let y = mainY + 24
+    for (const g of aside) {
+      if (y > 220) break
+      out += `<g${g.lane.isParked === true ? ' opacity="0.55"' : ''}>`
+      out += laneTile(g.lane, x + 2, y, 20, g.colour)
+      out += text(x + 28, y + 14, esc(fit(`${g.lane.name}${g.lane.isParked === true ? ' · parked' : ''}`, w - 30, 12.5, 600)), { size: 12.5, weight: 600, fill: C.text })
+      y += 30
+      for (const item of g.rows.slice(0, 2)) {
+        if (y > 230) break
+        const bw = behindWords(item.b)
+        out += `<circle cx="${x + 5}" cy="${y + 4}" r="2.5" fill="${g.colour}"/>`
+        out += text(x + 13, y + 8, esc(fit(describe(item.b, laneNames), w - 16, 11.5)), { size: 11.5, fill: item.isYours ? C.hl : C.text })
+        if (bw !== undefined) out += text(x + 13, y + 22, esc(bw.words), { fill: bw.ink })
+        y += 32
+      }
+      out += `</g>`
+      y += 4
+    }
+    x += w + gap
+  }
+  for (const g of cols) {
+    const w = Math.floor((room * weight(g)) / total)
+    out += `<path d="M${x + 14} ${mainY + 4.5}V${mainY + 22}" fill="none" stroke="${g.colour}" stroke-width="2.25"/>`
+    out += `<circle cx="${x + 14}" cy="${mainY}" r="4.5" fill="${C.canvas}" stroke="${g.colour}" stroke-width="2"/>`
+    out += laneTile(g.lane, x + 2, mainY + 24, 22, g.colour)
+    out += text(x + 30, mainY + 40, esc(fit(g.lane.name, w - 32, 13.5, 600)), { size: 13.5, weight: 600, fill: C.text })
+    let y = mainY + 62
+    if (g.lane.live !== undefined) {
+      out += livePill(x + 2, y, g.lane.live, g.colour, w - 20).svg
+      y += 20
+    }
+    const sub = uatWords(g.lane).replace(' same as live', ' = live')
+    const warn = g.lane.staging === undefined
+    out += text(x + 2, y + 4, esc(fit(g.moved === 0 ? sub : `${sub} · ${agoOf(g.moved, now)}`, w - 4)), { fill: warn ? TONE.warn.ink : C.muted })
+    y += 14
+    if (g.rows.length === 0) out += text(x + 2, y + 18, 'nothing open', { fill: C.faint })
+    // Up to three branches; with more, two and a count, so the column ends inside the board.
+    const shown = g.rows.length > 3 ? g.rows.slice(0, 2) : g.rows
+    shown.forEach((item, at) => {
+      const ty = y + 10 + at * 40
+      out += `<circle cx="${x + 5}" cy="${ty + 10}" r="2.5" fill="${g.colour}"/>`
+      const bw = behindWords(item.b)
+      const lines = wrap(describe(item.b, laneNames), w - 16, 11.5, bw === undefined ? 2 : 1)
+      lines.forEach((l, i) => {
+        out += text(x + 13, ty + 14 + i * 14, esc(l), { size: 11.5, fill: item.isYours ? C.hl : C.text })
+      })
+      if (bw !== undefined) out += text(x + 13, ty + 28, esc(bw.words), { fill: bw.ink })
+    })
+    if (g.rows.length > 3) out += text(x + 13, y + 10 + 2 * 40 + 14, `+${g.rows.length - 2} more`)
+    x += w + gap
+  }
+
+  return frame(W, out, WIDE_HEIGHT)
 }
 
 /** The words for a repository git could not read. */
@@ -260,249 +425,26 @@ const unreadWords = (repo: Board['repo']): string =>
         : ''
 
 /**
- * The spine in its frame: the shared one trims the margin and sizes the canvas
- * to what is drawn. The wide spine (900 laid out) keeps the wide views' one
- * height, so the pane does not jump as git answers; the height asked for is otherwise not needed.
- */
-const frame = (w: number, _h: number, body: string): string => frameView(w, body, w > 600 ? WIDE_HEIGHT : 0)
-
-const label = (x: number, y: number, words: string, anchor: 'start' | 'end' = 'start'): string =>
-  text(x, y, esc(words.toUpperCase()), { weight: 600, spacing: 0.6, anchor })
-
-/** Tall: the trunk runs down the middle, newest at the top; open branches on the left, your work on the right. */
-function tallSpine(b: Board, here: Here, now: number): string {
-  const W = 440
-  const left = 16
-  const cardW = 152
-  const spineL = 209
-  const spineR = 231
-  const top = 64
-  const forkY = (behind: number): number => top + along(behind)
-  const colours = laneColours(here.lanes ?? [])
-  const lane = yourLane(here)
-  let wires = ''
-  let body = ''
-  let dots = ''
-
-  // Open branches, nearest the tip first. Each card sits level with its fork
-  // or as near below it as the cards above allow, so every connector runs
-  // flat or climbs, and each takes a lane nearer the spine than the one above.
-  const items = openItems(here, colours)
-  const shown = pick(items, 8)
-  let y = 44
-  shown.forEach((item, at) => {
-    const f = forkY(item.b.behind)
-    const cardTop = Math.max(f - 22, y)
-    const mid = cardTop + 22
-    const laneX = 176 + at * 4
-    const ink = isFar(item.b) ? TONE.danger.ink : C.wire
-    const d = elbow([left + cardW + 4, mid], laneX, [spineL, f], false)
-    wires += isFar(item.b) ? dashed(d, ink) : solid(d, ink)
-    body += branchCard(item, left, cardTop, cardW, now)
-    dots += `<circle cx="${left + cardW}" cy="${mid}" r="3.5" fill="${C.canvas}" stroke="${isFar(item.b) ? ink : C.port}" stroke-width="1.5"/>`
-    dots += `<circle cx="${spineL}" cy="${f}" r="3" fill="${C.canvas}" stroke="${isFar(item.b) ? ink : C.port}" stroke-width="1.5"/>`
-    y = cardTop + 44 + 8
-  })
-  if (items.length > shown.length) {
-    body += text(left, y + 8, `+${items.length - shown.length} more open`)
-    y += 20
-  }
-  if (items.length === 0) {
-    body += text(left, 56, 'No other open branches')
-    y = 64
-  }
-  const leftBottom = y
-
-  // Claude, then your branch and staging on the right, placed the same way.
-  const rightX = 252
-  const rightW = W - 16 - rightX
-  // The ring sits far enough right that the connectors' lanes (x 236 to 246) pass clear of its stations.
-  body += claudeRing(b, 296, 84, 344)
-  type Side = { f: number; h: number; draw: (top: number) => string; ink: string; width: number }
-  const sides: Side[] = []
-  sides.push({ f: forkY(here.trunk === undefined ? 0 : here.behind), h: 58, ink: C.accent, width: 1.75, draw: t => yourCard(b, here, rightX, t, rightW, lane === undefined ? C.muted : colours.get(lane) ?? C.muted, now, true) })
-  const staging = lane?.staging ?? (here.lanes === undefined || here.lanes.length === 0 ? here.staging : undefined)
-  if (staging !== undefined) sides.push({ f: forkY(staging.behind), h: 40, ink: C.hl, width: 1.5, draw: t => stagingCard(lane, staging, rightX, t, rightW, now) })
-  sides.sort((a, z) => a.f - z.f)
-  let ry = 138
-  sides.forEach((s, at) => {
-    const cardTop = Math.max(s.f - s.h / 2, ry)
-    const mid = cardTop + s.h / 2
-    const laneX = 246 - at * 5
-    wires += solid(elbow([rightX - 4, mid], laneX, [spineR, s.f], false), s.ink, s.width)
-    body += s.draw(cardTop)
-    dots += `<circle cx="${spineR}" cy="${s.f}" r="3.5" fill="${C.canvas}" stroke="${s.ink}" stroke-width="1.5"/>`
-    ry = cardTop + s.h + 12
-  })
-
-  // Releases, newest first, listed under your work: not to the spine's scale.
-  const rel = releasesOf(here)
-  if (rel.rows.length > 0) {
-    ry += 8
-    body += label(rightX, ry + 4, fit(rel.title, rightW, 11, 600))
-    ry += 22
-    // A live release's pill is silk; beside it go `live` (or its lane, when every lane's is listed) and its age.
-    rel.rows.forEach(r => {
-      const p = pillAt(rightX, ry, fitMono(tagWords(r.name), rightW - 90), r.isLive)
-      body += p.svg
-      const when = releaseWords(r, now)
-      if (when !== '') body += text(p.right + 8, ry + 4, esc(fit(when, W - 16 - p.right - 8)), { fill: r.isLive ? C.text : C.muted })
-      ry += 28
-    })
-    ry -= 14
-  }
-  const rightBottom = ry
-
-  // The spine, long enough to reach the furthest fork and run past both columns.
-  const furthest = Math.max(top, ...shown.map(i => forkY(i.b.behind)), ...sides.map(s => s.f))
-  const end = Math.max(furthest + 24, leftBottom, rightBottom) + 8
-  let spine = `<rect x="${spineL}" y="52" width="${spineR - spineL}" height="${end - 52}" rx="11" fill="${C.node}" stroke="${C.nodeLine}"/>`
-  // The scale marked inside the spine, where no fork sits beside the mark.
-  const forks = [...shown.map(i => forkY(i.b.behind)), ...sides.map(s => s.f)]
-  for (const mark of [10, 100]) {
-    const my = forkY(mark)
-    if (my + 8 < end && forks.every(f => Math.abs(f - my) > 8)) spine += text(220, my + 3, String(mark), { font: 'mono', size: 8, anchor: 'middle', fill: C.faint })
-  }
-
-  // Under the spine: its name, the legend, the merged branches.
-  let foot = text(220, end + 18, 'main · older below', { font: 'mono', anchor: 'middle' })
-  let fy = end + 44
-  let fx = left
-  const legend: Array<[string, string, 'solid' | 'dashed' | 'dot']> = [
-    ['Claude working now', C.accent, 'dot'],
-    ['Your branch', C.accent, 'solid'],
-    ['Open branch', C.wire, 'solid'],
-    [`${FAR_BEHIND}+ behind main`, TONE.danger.ink, 'dashed'],
-    ['Staging', C.hl, 'solid'],
-  ]
-  for (const [words, ink, kind] of legend) {
-    const w = 20 + widthOf(words) + 16
-    if (fx + w - 16 > W - 16) {
-      fx = left
-      fy += 20
-    }
-    foot += legendItem(fx, fy, words, ink, kind).svg
-    fx += w
-  }
-  if (here.merged !== undefined) {
-    fy += 26
-    foot += `<g transform="translate(${left} ${fy - 12}) scale(0.6667)" fill="none" stroke="${C.muted}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/></g>`
-    foot += text(left + 22, fy, here.merged === 0 ? 'No merged branches' : `${here.merged} merged ${here.merged === 1 ? 'branch' : 'branches'}`)
-  }
-
-  const head = label(left, 28, `${items.length} open ${items.length === 1 ? 'branch' : 'branches'}`) + label(W - 16, 28, lane === undefined ? 'Your branch' : lane.name, 'end')
-  return frame(W, fy + 16, head + spine + wires + body + dots + foot)
-}
-
-/** Wide: the trunk runs left to right, newest at the right; open branches above it, your work below. */
-function wideSpine(b: Board, here: Here, now: number): string {
-  const W = 900
-  const H = 284
-  const tip = 868
-  const spineT = 134
-  const spineB = 154
-  const forkX = (behind: number): number => tip - Math.round(along(behind) * 1.4)
-  const colours = laneColours(here.lanes ?? [])
-  const lane = yourLane(here)
-  let wires = ''
-  let body = ''
-  let dots = ''
-
-  // Open branches above the spine, nearest the tip first from the right. Each
-  // card sits over its fork or as near left of it as the cards beside allow.
-  const items = openItems(here, colours)
-  const cardW = 150
-  const shown: Item[] = []
-  let edge = W - 16
-  for (const item of pick(items, 5)) {
-    const f = forkX(item.b.behind)
-    const right = Math.min(f + cardW / 2, edge)
-    if (right - cardW < 16) continue
-    const at = shown.length
-    const cx = right - cardW / 2
-    const laneY = 96 + at * 5
-    const ink = isFar(item.b) ? TONE.danger.ink : C.wire
-    const d = elbow([cx, 92], laneY, [f, spineT], true)
-    wires += isFar(item.b) ? dashed(d, ink) : solid(d, ink)
-    body += branchCard(item, right - cardW, 44, cardW, now)
-    dots += `<circle cx="${cx}" cy="88" r="3.5" fill="${C.canvas}" stroke="${isFar(item.b) ? ink : C.port}" stroke-width="1.5"/>`
-    dots += `<circle cx="${f}" cy="${spineT}" r="3" fill="${C.canvas}" stroke="${isFar(item.b) ? ink : C.port}" stroke-width="1.5"/>`
-    shown.push(item)
-    edge = right - cardW - 8
-  }
-
-  // Your branch and staging below, placed the same way from the right.
-  type Side = { f: number; w: number; h: number; draw: (x: number) => string; ink: string; width: number }
-  const sides: Side[] = []
-  const yourW = 210
-  sides.push({ f: forkX(here.trunk === undefined ? 0 : here.behind), w: yourW, h: 58, ink: C.accent, width: 1.75, draw: x => yourCard(b, here, x, 172, yourW, lane === undefined ? C.muted : colours.get(lane) ?? C.muted, now, true) })
-  const staging = lane?.staging ?? (here.lanes === undefined || here.lanes.length === 0 ? here.staging : undefined)
-  if (staging !== undefined) sides.push({ f: forkX(staging.behind), w: 190, h: 40, ink: C.hl, width: 1.5, draw: x => stagingCard(lane, staging, x, 172, 190, now) })
-  sides.sort((a, z) => z.f - a.f)
-  let sideEdge = W - 16
-  sides.forEach((s, at) => {
-    const right = Math.min(s.f + s.w / 2, sideEdge)
-    const cx = right - s.w / 2
-    const laneY = 166 - at * 5
-    wires += solid(elbow([cx, 168], laneY, [s.f, spineB], true), s.ink, s.width)
-    body += s.draw(right - s.w)
-    dots += `<circle cx="${s.f}" cy="${spineB}" r="3.5" fill="${C.canvas}" stroke="${s.ink}" stroke-width="1.5"/>`
-    sideEdge = right - s.w - 12
-  })
-
-  // Releases along the foot, newest first, on their own row under the cards.
-  const rel = releasesOf(here)
-  let rx = 16
-  if (rel.rows.length > 0) {
-    const title = fit(rel.title, 150, 11, 600)
-    body += label(rx, 260, title)
-    // Capitals with letter spacing run wider than the table's lower case; the gap allows for it.
-    rx += widthOf(title.toUpperCase(), 11, 600) * 1.08 + 0.6 * title.length + 16
-    for (const r of rel.rows) {
-      const words = tagWords(r.name)
-      const when = releaseWords(r, now)
-      const need = monoWidth(words) + 20 + (when === '' ? 0 : widthOf(when) + 8)
-      if (rx + need > W - 16) break
-      const p = pillAt(rx, 256, words, r.isLive)
-      body += p.svg
-      if (when !== '') body += text(p.right + 8, 260, esc(when))
-      rx = p.right + (when === '' ? 0 : widthOf(when) + 8) + 12
-    }
-  }
-
-  // The spine across the board, with the scale marked inside it.
-  let spine = `<rect x="16" y="${spineT}" width="${tip + 16 - 16}" height="${spineB - spineT}" rx="10" fill="${C.node}" stroke="${C.nodeLine}"/>`
-  const forks = [...shown.map(i => forkX(i.b.behind)), ...sides.map(s => s.f)]
-  for (const mark of [10, 100, 1000]) {
-    const mx = forkX(mark)
-    if (mx > 40 && forks.every(f => Math.abs(f - mx) > 14)) spine += text(mx, spineT + 13, String(mark), { font: 'mono', size: 8, anchor: 'middle', fill: C.faint })
-  }
-  spine += text(28, spineT + 14, 'older', { font: 'mono', size: 9, fill: C.faint })
-
-  const more = items.length - shown.length
-  const merged = here.merged === undefined || here.merged === 0 ? '' : ` · ${here.merged} merged`
-  const head =
-    label(16, 28, `${items.length} open ${items.length === 1 ? 'branch' : 'branches'}${more > 0 ? ` · ${more} not shown` : ''}`) +
-    text(W - 16, 28, esc(`main, newest at the right${merged}`), { anchor: 'end' })
-  return frame(W, H, head + spine + wires + body + dots)
-}
-
-/**
- * The spine view of the work: the trunk as one line, newest at the top (tall)
- * or the right (wide), every open branch joined to it where it forked, your
- * branch and staging beside it, and the releases listed by them.
+ * The spine view: main as the trunk, each lane joining it with its live release
+ * and UAT state and its open branches hanging under it, said by what each is for.
+ * Tall, main runs down the left under Claude's band; wide, along the top beside Claude's ring.
  */
 export function drawSpine(b: Board, isWide: boolean, now: number): string {
   const repo = b.repo
   if (repo === undefined || repo.kind !== 'repo') {
-    const W = isWide ? 900 : 440
-    const H = isWide ? 284 : 200
-    const words = esc(fit(unreadWords(repo), W - 32))
-    const spine = isWide
-      ? `<rect x="16" y="134" width="868" height="20" rx="10" fill="${C.node}" stroke="${C.nodeLine}" stroke-dasharray="3 3"/>`
-      : `<rect x="209" y="52" width="22" height="100" rx="11" fill="${C.node}" stroke="${C.nodeLine}" stroke-dasharray="3 3"/>`
-    return frame(W, H, label(16, 28, 'Spine') + spine + text(16, isWide ? 110 : 176, words))
+    // Claude still has its ring; the trunk waits, dashed, for git.
+    const words = unreadWords(repo)
+    if (isWide) {
+      let out = ring(b, 104, 71) + text(104, 144, esc(fit(doingWords(b), 176, 13, 600)), { size: 13, weight: 600, anchor: 'middle', fill: C.text })
+      out += `<path d="M214 38H858" fill="none" stroke="${C.nodeLine}" stroke-width="3" stroke-dasharray="4 6" stroke-linecap="round"/>`
+      out += text(214, 74, esc(fit(words, 884 - 214, 12)), { size: 12 })
+      return frame(900, out, WIDE_HEIGHT)
+    }
+    let out = claudeBand(b, 16, 18, 408) + hair(16, 424, 144)
+    out += `<path d="M26 170V230" fill="none" stroke="${C.nodeLine}" stroke-width="3" stroke-dasharray="4 6" stroke-linecap="round"/>`
+    out += text(46, 196, esc(fit(words, 424 - 46, 12)), { size: 12 })
+    return frame(440, out)
   }
 
-  return isWide ? wideSpine(b, repo, now) : tallSpine(b, repo, now)
+  return isWide ? treeWide(b, repo, now) : treeTall(b, repo, now)
 }
