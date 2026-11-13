@@ -67,6 +67,20 @@ async function stageOf($: EngineInterface, cwd: string, trunkRef: string, path: 
   }
 }
 
+// The repository's top folder per session folder: it changes only when the folder does, so it is asked once.
+const roots = new Map<string, string>()
+
+/** The repository's top folder, with forward slashes; undefined when git would not say, and then asked again. */
+async function rootOf($: EngineInterface, cwd: string): Promise<string | undefined> {
+  const before = roots.get(cwd)
+  if (before !== undefined) return before
+  const top = said(await git($, ['rev-parse', '--show-toplevel'], cwd)).replace(/\\/g, '/')
+  if (top === '') return undefined
+  roots.set(cwd, top)
+
+  return top
+}
+
 /** Why a call failed, in the few words the pane has room for. */
 const reasonOf = (failure: unknown): string => {
   const said = failure instanceof Error ? failure.message : String(failure)
@@ -141,6 +155,7 @@ export async function readRepo($: EngineInterface, cwd: string, asked: string, s
     branch = said(await git($, ['rev-parse', '--short', 'HEAD'], cwd)) || 'detached'
   }
 
+  const root = await rootOf($, cwd)
   const trunkRef = await trunkOf($, cwd, asked)
   const isTrunk = trunkRef !== undefined && (trunkRef === branch || trunkRef.endsWith(`/${branch}`))
   let ahead = 0
@@ -161,9 +176,11 @@ export async function readRepo($: EngineInterface, cwd: string, asked: string, s
   let loose: OpenBranch[] | undefined
   let clashes: Clash[] | undefined
   let clash: Clash['level'] | undefined
+  let mismatch: { named: string; byFiles: string } | undefined
   if (trunkRef !== undefined) {
     const now = await $.clock.now()
-    const specs = await readSpecs($, cwd)
+    // The track file sits at the top of the repository, which a session in a subfolder is not.
+    const specs = await readSpecs($, root ?? cwd)
     if (specs.length > 0) {
       const placed = await readLanes($, cwd, trunkRef, specs, branch, now, dirtyFiles)
       lanes = placed.lanes
@@ -172,6 +189,7 @@ export async function readRepo($: EngineInterface, cwd: string, asked: string, s
       loose = placed.loose
       clashes = placed.clashes
       clash = placed.clash
+      mismatch = placed.mismatch
     } else if (stagingRef !== '') {
       const found = await refOf($, cwd, stagingRef)
       if (found !== undefined) staging = await stageOf($, cwd, trunkRef, found, now, true)
@@ -198,5 +216,7 @@ export async function readRepo($: EngineInterface, cwd: string, asked: string, s
     ...(loose === undefined || loose.length === 0 ? {} : { loose }),
     ...(clashes === undefined || clashes.length === 0 ? {} : { clashes }),
     ...(clash === undefined ? {} : { clash }),
+    ...(root === undefined ? {} : { root }),
+    ...(mismatch === undefined ? {} : { mismatch }),
   }
 }
