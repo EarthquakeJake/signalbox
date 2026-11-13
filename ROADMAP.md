@@ -29,6 +29,7 @@ The design reference is the **Refined board** page of the Release map canvas: ht
 
 ## Done
 
+- 0.14.1: the pane fills its width as lot-map does (the host fits it), the height follows the rows, the tall board keeps room for the feed, and the redraw ticks every second.
 - 0.14.0: both views sized to fit the pane (never ballooning, never cut off at the bottom), and a redraw every 2 seconds while the pane is open, so a height-only resize is caught.
 - 0.13.0: branches described by their newest commit where their name is made up; "UAT · same as live" where staging holds what is live; every lane's live release on the spine when on the trunk; no scale sentence.
 - 0.12.0: option A from "Board, slimmer": tighter lane cards (726 to 666 px on Silkscreen) and each tool station's icon in its own colour, on the board and the spine.
