@@ -25,6 +25,7 @@ The design reference is the **Refined board** page of the Release map canvas: ht
 
 ## Done
 
+- 0.8.0: the tall release section. Your lane as three large stops, the other lanes as rows under a hairline, text widths measured, and an in-repo render harness with a layout check.
 - 0.7.0: the refined finish (fonts, colours, lines, Claude's box, tag wording) and merged branches left out of lane counts.
 - 0.6.x: branches placed by the files they change, with a caption when they cannot be.
 - 0.5.x: real git data, lanes from a track file, two layouts chosen by the pane's shape.
