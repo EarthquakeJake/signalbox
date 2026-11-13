@@ -347,9 +347,11 @@ export const FIXTURES: Fixture[] = [
  * Silkscreen with clashes: the repository's list, each branch's worst level and
  * your branch's, as the Data lead's reading would give them.
  */
-function withClashes(id: string, title: string, clashes: Clash[]): Fixture {
+function withClashes(id: string, title: string, clashes: Clash[], more: Record<string, OpenBranch[]> = {}): Fixture {
   const base = FIXTURES.find(f => f.id === 'silkscreen-same-as-live') as Fixture
-  const repo = base.board.repo as Extract<Repo, { kind: 'repo' }>
+  const plain = base.board.repo as Extract<Repo, { kind: 'repo' }>
+  // `more` adds open branches to lanes by id, for a reading with branches the base does not have.
+  const repo = { ...plain, lanes: (plain.lanes ?? []).map(lane => ({ ...lane, open: [...(lane.open ?? []), ...(more[lane.id ?? ''] ?? [])], branches: lane.branches + (more[lane.id ?? '']?.length ?? 0) })) }
   const worst = (name: string): Clash['level'] | undefined => {
     const levels = clashes.filter(c => c.a === name || c.b === name).map(c => c.level)
     return levels.includes('conflict') ? 'conflict' : levels.length > 0 ? 'overlap' : undefined
@@ -372,8 +374,24 @@ function withClashes(id: string, title: string, clashes: Clash[]): Fixture {
   }
 }
 
+/** Every pair among some branches, as overlaps on one file: the App's branches all touch its one big file. */
+const pairs = (names: string[], file: string): Clash[] =>
+  names.flatMap((a, i) => names.slice(i + 1).map(b => ({ a, b, level: 'overlap' as const, files: [file] })))
+
 FIXTURES.push(
-  withClashes('clash-conflict', 'One conflict between two App branches', [
+  withClashes(
+    'clash-silkscreen',
+    'Silkscreen as git read it: one conflict, and six routine App overlaps on one file',
+    [
+      { a: 'site/no-paid-mentions', b: 'claude/upbeat-volhard-48eb37', level: 'conflict', files: ['public/privacy/index.html', 'site/tools/make_legal.py', 'public/terms/index.html'] },
+      ...pairs(['app/board-check', 'app/pins-tooltip', 'app/release-3.14.1', 'app/routing-order'], 'public/app/index.html'),
+    ],
+    {
+      app: [{ name: 'app/release-3.14.1', ahead: 4, behind: 3, updatedAt: NOW - 8 * H, subject: 'Release 3.14.1: the pins fix' }],
+      website: [{ name: 'site/no-paid-mentions', ahead: 2, behind: 20, updatedAt: NOW - 30 * H, subject: 'Legal: no paid mentions in the privacy and terms pages' }],
+    },
+  ),
+  withClashes('clash-conflict','One conflict between two App branches', [
     { a: 'app/board-check', b: 'app/routing-order', level: 'conflict', files: ['src/router.ts', 'src/board/check.ts'] },
   ]),
   withClashes('clash-overlap', 'Your branch overlaps a Platform branch', [
