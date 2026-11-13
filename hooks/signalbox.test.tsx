@@ -157,12 +157,14 @@ test('/signalbox spine switches the pane to the spine, and /signalbox board back
 
   await $.command.run({ command: 'signalbox', args: 'spine' })
   const spine = await $.ui.mount(pane(60, 60))
-  expect(JSON.stringify(await spine.find({ type: 'Svg' }))).toContain('>SPINE<')
+  // The spine has Claude's ring and no "NOW" header; the board has both.
+  expect(JSON.stringify(await spine.find({ type: 'Svg' }))).toContain('CLAUDE')
+  expect(JSON.stringify(await spine.find({ type: 'Svg' }))).not.toContain('>NOW<')
   await spine.unmount()
 
   await $.command.run({ command: 'signalbox', args: 'board' })
   const back = await $.ui.mount(pane(60, 60))
   expect(JSON.stringify(await back.find({ type: 'Svg' }))).toContain('CLAUDE')
-  expect(JSON.stringify(await back.find({ type: 'Svg' }))).not.toContain('>SPINE<')
+  expect(JSON.stringify(await back.find({ type: 'Svg' }))).toContain('>NOW<')
   await back.unmount()
 })
