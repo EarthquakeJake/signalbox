@@ -1,5 +1,5 @@
 import type { Board, Lane, StationId } from '../types'
-import { C, WIDE_LANES, agoOf, branchIn, drawLanes, esc, fit, fitMono, laneRow, stagingWords, text, widthOf } from './lanes'
+import { C, agoOf, branchIn, esc, fit, fitMono, laneRow, stagingWords, text, widthOf } from './lanes'
 
 export { fit }
 
@@ -235,7 +235,63 @@ function tallRelease(b: Board, names: TrackNames, now: number, flow: Wear): { sv
   return { svg: out, h: 424 + rest.length * 28 + 8 }
 }
 
-/** The wide board's release section, as it stood before the refined design reaches it. */
+/**
+ * The wide board's lanes, in the right column: a header with the count and the
+ * marker, your branch's name, then one row per lane in file order. The feed wire
+ * runs from the tag to your lane's pad, which is lit; with no lane of yours it
+ * ends loose beside the tag.
+ */
+function wideLanes(here: Here, lanes: readonly Lane[], now: number, flow: Wear): string {
+  const lit = lanes.find(lane => lane.isHere)
+  const marker = markerOf(here, lanes)
+
+  // Five rows fit under the header. Past that, four rows and a count of the rest,
+  // with your lane kept in sight in the last row if it would fall off the end.
+  let shown = [...lanes]
+  if (lanes.length > 5) {
+    shown = lanes.slice(0, 4)
+    if (lit !== undefined && !shown.includes(lit)) shown[3] = lit
+  }
+  const rowAt = (at: number): number => 80 + at * 44
+
+  const count = `${lanes.length} ${lanes.length === 1 ? 'lane' : 'lanes'}`.toUpperCase()
+  let out = text(660, 28, count, { weight: 600, spacing: 0.6 })
+  if (marker !== '') out += text(884, 28, esc(fit(marker, 224 - widthOf(count, 11, 600) - 16)), { anchor: 'end' })
+  out += text(660, 46, esc(branchIn(here.branch, 224)), { font: 'mono', fill: C.hl })
+
+  const litAt = lit === undefined ? -1 : shown.indexOf(lit)
+  if (litAt >= 0) {
+    const cy = rowAt(litAt)
+    const bend = cy < 145 ? -1 : 1
+    out += wire(`M630 145H636Q644 145 644 ${145 + bend * 8}V${cy - bend * 8}Q644 ${cy} 652 ${cy}H661`, flow)
+  } else {
+    out += wire('M630 145H648', flow) + `<circle cx="651.5" cy="145" r="3.5" fill="${C.canvas}" stroke="${C.port}" stroke-width="1.5"/>`
+  }
+  shown.forEach((lane, at) => {
+    out += laneRow(lane, rowAt(at), now, 'wide', lane === lit)
+  })
+  if (shown.length < lanes.length) out += text(688, 266, `+${lanes.length - shown.length} more`)
+
+  return out
+}
+
+/**
+ * The newest three calls, model turns left out, drawn under the wide board's tag:
+ * a glyph, the station padded so the labels line up, and the label.
+ */
+function wideFeed(b: Board): string {
+  const rows = b.rows.filter(r => r.station !== 'model').slice(-3).reverse()
+  let out = ''
+  rows.forEach((r, at) => {
+    const glyph = r.status === 'run' ? '●' : r.status === 'ok' ? '·' : '✕'
+    const line = fitMono(`${glyph} ${NAMES[r.station].padEnd(6)} ${r.label}`, 190)
+    out += text(440, 216 + at * 20, esc(line).replace(/ /g, '&#160;'), { font: 'mono', fill: r.status === 'run' ? C.text : r.status === 'err' ? C.hl : C.muted })
+  })
+
+  return out
+}
+
+/** The wide board's release section. With lanes, rows in the right column; without, three stops as before. */
 function wideRelease(b: Board, names: TrackNames, now: number, flow: Wear): string {
   const repo = b.repo
   const here = repo !== undefined && repo.kind === 'repo' ? repo : undefined
@@ -282,16 +338,7 @@ function wideRelease(b: Board, names: TrackNames, now: number, flow: Wear): stri
   const lanes = here?.lanes ?? []
   const nodes = [674, 770, 866]
   const cy = 145
-  if (here !== undefined && lanes.length > 0) {
-    const shape = WIDE_LANES
-    const marker = markerOf(here, lanes)
-    const tail = marker === '' ? '' : ` · ${marker}`
-    return (
-      wire(`M630 145H632Q640 145 640 137V${shape.top + 8}Q640 ${shape.top} 648 ${shape.top}H${shape.bus}`, flow) +
-      drawLanes(lanes, shape, now) +
-      text(shape.left, shape.top - 14, `${esc(fit(here.branch, 224 - widthOf(tail)))}${esc(tail)}`)
-    )
-  }
+  if (here !== undefined && lanes.length > 0) return wideLanes(here, lanes, now, flow)
 
   let out = wire(WIDE.route, flow) + `<path d="M${nodes[0]! + 14} ${cy}H${nodes[1]! - 14}M${nodes[1]! + 14} ${cy}H${nodes[2]! - 14}" fill="none" stroke="${C.wire}" stroke-width="1.5"/>`
   for (let at = 0; at < 3; at += 1) {
@@ -303,8 +350,9 @@ function wideRelease(b: Board, names: TrackNames, now: number, flow: Wear): stri
       `<circle cx="${x}" cy="${cy}" r="13" fill="${C.canvas}" stroke="${ring}" stroke-width="${stop.isLit ? 2 : 1.5}"${dash}/>` +
       (stop.count === '' ? '' : text(x, cy + 4, stop.count, { font: 'mono', anchor: 'middle', fill: stop.isLit ? C.accent : C.muted })) +
       (stop.isMarked === true ? `<circle cx="${x + 11}" cy="${cy - 11}" r="3.5" fill="${C.port}"/>` : '') +
-      text(x, 180, esc(stop.name), { anchor: 'middle', fill: stop.isLit ? C.hl : C.muted }) +
-      (stop.under === '' ? '' : text(x, 195, esc(stop.under), { anchor: 'middle' }))
+      // The last stop's words end at the margin rather than centring past it.
+      text(at === 2 ? 884 : x, 180, esc(stop.name), { anchor: at === 2 ? 'end' : 'middle', fill: stop.isLit ? C.hl : C.muted }) +
+      (stop.under === '' ? '' : text(at === 2 ? 884 : x, 195, esc(stop.under), { anchor: at === 2 ? 'end' : 'middle' }))
   }
   const said =
     here === undefined
@@ -374,7 +422,7 @@ export function drawBoard(b: Board, isWide: boolean, names: TrackNames, now: num
     `<rect x="${L.tag.x + 0.5}" y="${L.tag.y + 0.5}" width="${L.tag.w - 1}" height="25" rx="12.5" fill="${C.canvas}" stroke="${flow === 'idle' ? C.nodeLine : C.accent}"/>` +
     text(L.tag.x + L.tag.w / 2, L.tag.y + 17, esc(fitMono(tagText, L.tag.w - 12)), { font: 'mono', anchor: 'middle', fill: flow === 'idle' ? C.muted : C.accent })
 
-  const release = isWide ? { svg: wideRelease(b, names, now, flow), h: WIDE.h } : tallRelease(b, names, now, flow)
+  const release = isWide ? { svg: wideRelease(b, names, now, flow) + wideFeed(b), h: WIDE.h } : tallRelease(b, names, now, flow)
   const H = release.h
 
   // In the wide layout the count stops short of the lanes column.

@@ -265,6 +265,15 @@ export const register: Register = (on, options) => {
     const running = [...state.rows].reverse().find(r => r.status === 'run')
     const alt = `${TITLE}. ${running !== undefined ? `${NAMES[running.station]}: ${running.label}` : state.isWorking ? 'Thinking' : 'Waiting for you'}`
 
+    // The wide board draws the feed itself, under the tag, where a short pane cannot cut it off.
+    if (isWide) {
+      return (
+        <Box flexDirection="column">
+          <Svg source={drawBoard(state, isWide, names, now)} alt={alt} />
+        </Box>
+      )
+    }
+
     return (
       <Box flexDirection="column" gap={1}>
         <Svg source={drawBoard(state, isWide, names, now)} alt={alt} />
