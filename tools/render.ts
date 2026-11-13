@@ -48,7 +48,7 @@ const drawn: Drawn[] = []
 // Every fixture is drawn as the board and as the spine view; the spine's files start `spine-`.
 const views = [
   { prefix: '', title: '', draw: (f: (typeof FIXTURES)[number], isWide: boolean) => drawBoard(f.board, isWide, f.names, f.now) },
-  { prefix: 'spine-', title: 'Spine: ', draw: (f: (typeof FIXTURES)[number], isWide: boolean) => drawSpine(f.board, isWide, f.now) },
+  { prefix: 'spine-', title: 'Spine: ', draw: (f: (typeof FIXTURES)[number], isWide: boolean) => drawSpine(f.board, isWide, f.now, f.names) },
 ]
 for (const view of views) {
   for (const f of FIXTURES) {

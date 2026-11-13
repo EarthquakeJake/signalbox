@@ -140,6 +140,8 @@ function tallRelease(b: Board, names: TrackNames, now: number, flow: Wear): { sv
   const ahead = here?.ahead ?? 0
   const dirty = here?.dirty ?? 0
   const isBranchLit = here !== undefined && (ahead > 0 || dirty > 0)
+  // On the trunk, in a project with lanes, and in none of them: no lane's stops are drawn.
+  const isOnTrunk = here !== undefined && here.trunk === undefined && lanes.length > 0 && lit === undefined
 
   type StageState = 'none' | 'plain' | 'yours' | 'behind' | 'passed'
   let caption = ''
@@ -190,6 +192,9 @@ function tallRelease(b: Board, names: TrackNames, now: number, flow: Wear): { sv
       stageCount = lit.staging?.behind ?? 0
       hasLive = lit.live !== undefined
       liveLabel = lit.live ?? names.live
+    } else if (isOnTrunk) {
+      // On the trunk you are in no lane by design: say where you are, and draw no lane's stops.
+      caption = `You are on ${(here.trunkRef ?? 'main').replace(/^origin\//, '')}`
     } else {
       caption = 'Your branch is in no lane'
       stageLabel = 'no lane'
@@ -218,7 +223,7 @@ function tallRelease(b: Board, names: TrackNames, now: number, flow: Wear): { sv
   const yourClash = here === undefined ? undefined : clashOf(here, here.branch, here.clash)
   if (yourClash !== undefined && lit === undefined && here !== undefined) {
     const room = 368 - (marker === '' ? 0 : widthOf(marker) + 16)
-    const head = caption === 'Your branch is in no lane' || caption === 'Release track' ? caption : ''
+    const head = caption === 'Your branch is in no lane' || caption === 'Release track' || isOnTrunk ? caption : ''
     if (head !== '') caption = `${esc(head)}<tspan fill="${yourClash.ink}">${esc(fit(` · ${yourClash.words}`, room - widthOf(head)))}</tspan>`
   }
   const cy = 368
@@ -226,9 +231,11 @@ function tallRelease(b: Board, names: TrackNames, now: number, flow: Wear): { sv
   let out = wire(TALL.route, flow) + text(56, 352, caption)
   if (marker !== '' && !unknown) out += text(424, 352, esc(marker), { anchor: 'end' })
 
-  // The joins, then the three stops over them.
-  out += `<path d="M44 ${cy}H206" fill="none" stroke="${isBranchLit ? C.accent : C.wire}" stroke-width="${isBranchLit ? 1.75 : 1.5}"/>`
-  out += `<path d="M234 ${cy}H396" fill="none" stroke="${C.wire}" stroke-width="1.5"/>`
+  // The joins, then the three stops over them. On the trunk with lanes, only your own stop.
+  if (!isOnTrunk) {
+    out += `<path d="M44 ${cy}H206" fill="none" stroke="${isBranchLit ? C.accent : C.wire}" stroke-width="${isBranchLit ? 1.75 : 1.5}"/>`
+    out += `<path d="M234 ${cy}H396" fill="none" stroke="${C.wire}" stroke-width="1.5"/>`
+  }
   if (isBranchLit) out += `<circle cx="30" cy="${cy}" r="16" fill="none" stroke="${C.ring}" stroke-width="4"/>`
   out += `<circle cx="30" cy="${cy}" r="13" fill="${C.canvas}" stroke="${unknown ? C.faint : isBranchLit ? C.accent : C.wire}" stroke-width="${isBranchLit ? 2 : 1.5}"${unknown ? dash : ''}/>`
   if (ahead > 0) out += text(30, cy + 4, `+${ahead > 99 ? 99 : ahead}`, { font: 'mono', anchor: 'middle', fill: C.text })
@@ -237,16 +244,19 @@ function tallRelease(b: Board, names: TrackNames, now: number, flow: Wear): { sv
   if (yourClash !== undefined) out += clashMark(44, cy + 12, yourClash.level)
 
   const stageStroke = stageState === 'none' ? C.faint : stageState === 'behind' ? C.hl : stageState === 'plain' ? C.wire : C.accent
-  out += `<circle cx="220" cy="${cy}" r="13" fill="${C.canvas}" stroke="${stageStroke}" stroke-width="1.5"${stageState === 'none' ? dash : ''}/>`
-  if (stageState === 'yours') out += `<circle cx="220" cy="${cy}" r="3.5" fill="${C.accent}"/>`
-  if (stageState === 'behind') out += text(220, cy + 4, String(stageCount > 99 ? 99 : stageCount), { font: 'mono', anchor: 'middle', fill: C.hl })
-  if (stageState === 'passed') out += `<path d="M215 ${cy}l3.5 3.5 6.5 -7" fill="none" stroke="${C.accent}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`
-
-  out += `<circle cx="410" cy="${cy}" r="13" fill="${C.canvas}" stroke="${hasLive ? C.wire : C.faint}" stroke-width="1.5"${hasLive ? '' : dash}/>`
+  if (!isOnTrunk) {
+    out += `<circle cx="220" cy="${cy}" r="13" fill="${C.canvas}" stroke="${stageStroke}" stroke-width="1.5"${stageState === 'none' ? dash : ''}/>`
+    if (stageState === 'yours') out += `<circle cx="220" cy="${cy}" r="3.5" fill="${C.accent}"/>`
+    if (stageState === 'behind') out += text(220, cy + 4, String(stageCount > 99 ? 99 : stageCount), { font: 'mono', anchor: 'middle', fill: C.hl })
+    if (stageState === 'passed') out += `<path d="M215 ${cy}l3.5 3.5 6.5 -7" fill="none" stroke="${C.accent}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`
+    out += `<circle cx="410" cy="${cy}" r="13" fill="${C.canvas}" stroke="${hasLive ? C.wire : C.faint}" stroke-width="1.5"${hasLive ? '' : dash}/>`
+  }
 
   // Labels under the stops: the middle one is placed first, and the outer two take the room left either side of it.
   const ly = 400
-  if (unknown) {
+  if (isOnTrunk) {
+    out += yourBranch(here, 16, ly, 408)
+  } else if (unknown) {
     out += text(16, ly, esc(branchLabel === '' ? 'Working' : branchIn(branchLabel, 150)), { font: branchLabel === '' ? 'sans' : 'mono' })
     out += text(220, ly, 'Branch', { anchor: 'middle' }) + text(424, ly, 'Trunk', { anchor: 'end' })
   } else {
@@ -281,7 +291,7 @@ function tallRelease(b: Board, names: TrackNames, now: number, flow: Wear): { sv
  * runs from the tag to your lane's pad, which is lit; with no lane of yours it
  * ends loose beside the tag.
  */
-function wideLanes(here: Here, lanes: readonly Lane[], now: number, flow: Wear): string {
+function wideLanes(here: Here, lanes: readonly Lane[], now: number, flow: Wear, names: TrackNames): string {
   const lit = lanes.find(lane => lane.isHere)
   const marker = markerOf(here, lanes)
 
@@ -296,7 +306,12 @@ function wideLanes(here: Here, lanes: readonly Lane[], now: number, flow: Wear):
 
   const count = `${lanes.length} ${lanes.length === 1 ? 'lane' : 'lanes'}${here.merged === undefined || here.merged === 0 ? '' : ` · ${here.merged} merged`}`.toUpperCase()
   let out = text(660, 28, count, { weight: 600, spacing: 0.6 })
-  if (marker !== '') out += text(884, 28, esc(fit(marker, 224 - widthOf(count, 11, 600) - 16)), { anchor: 'end' })
+  // Capitals with letter spacing run wider than the table's measure, so the count's width allows for both.
+  // Where the marker does not fit whole, its short form ("by files", "tied", "no lane") does, rather than a cut.
+  const markerRoom = 224 - (widthOf(count, 11, 600) * 1.08 + 0.6 * count.length) - 16
+  const short: Record<string, string> = { 'lane from files': 'by files', 'lanes tied in files': 'tied', 'no lane in files': 'no lane' }
+  const markerWords = widthOf(marker) <= markerRoom ? marker : short[marker] ?? marker
+  if (marker !== '') out += text(884, 28, esc(fit(markerWords, markerRoom)), { anchor: 'end' })
   // Your branch, with a clash mark before it where it clashes.
   const yourClash = clashOf(here, here.branch, here.clash)
   out += yourClash === undefined ? yourBranch(here, 660, 46, 224) : clashMark(665, 42, yourClash.level) + yourBranch(here, 676, 46, 208)
@@ -311,7 +326,7 @@ function wideLanes(here: Here, lanes: readonly Lane[], now: number, flow: Wear):
   }
   const colours = laneColours(lanes)
   shown.forEach((lane, at) => {
-    out += laneLine(lane, rowAt(at), now, colours.get(lane) ?? C.muted, lane === lit, here)
+    out += laneLine(lane, rowAt(at), now, colours.get(lane) ?? C.muted, lane === lit, here, names.staging)
   })
   if (shown.length < lanes.length) out += text(688, 266, `+${lanes.length - shown.length} more`)
 
@@ -381,7 +396,7 @@ function wideRelease(b: Board, names: TrackNames, now: number, flow: Wear): stri
   const lanes = here?.lanes ?? []
   const nodes = [674, 770, 866]
   const cy = 145
-  if (here !== undefined && lanes.length > 0) return wideLanes(here, lanes, now, flow)
+  if (here !== undefined && lanes.length > 0) return wideLanes(here, lanes, now, flow, names)
 
   let out = wire(WIDE.route, flow) + `<path d="M${nodes[0]! + 14} ${cy}H${nodes[1]! - 14}M${nodes[1]! + 14} ${cy}H${nodes[2]! - 14}" fill="none" stroke="${C.wire}" stroke-width="1.5"/>`
   const labelX = [652, 770, 884]
@@ -434,10 +449,10 @@ export function drawBoard(b: Board, isWide: boolean, names: TrackNames, now: num
       // Each station's icon in its own colour; a running one turns silk.
       `<g transform="translate(${s.x + 7} ${s.y + 7}) scale(0.5833)" fill="none" stroke="${isLive ? C.accent : STATION_TONE[id] ?? C.muted}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${ICONS[id]}</g>` +
       text(s.x + 28, s.y + 18, NAMES[id], { fill: isLive ? C.accent : id === 'you' ? C.text : C.muted }) +
-      // On the narrow chips a three-figure count takes smaller type, so it stays clear of the name.
+      // On the narrow chips (Files, Shell) a count of two or three figures takes smaller type and the edge, so it stays clear of the name.
       (count > 0
-        ? count > 99 && s.w < 100
-          ? text(s.x + s.w - 5, s.y + 17.5, '99+', { font: 'mono', size: 9, anchor: 'end', fill: ink })
+        ? count > 9 && s.w < 100
+          ? text(s.x + s.w - 6, s.y + 17.5, count > 99 ? '99+' : String(count), { font: 'mono', size: count > 99 ? 9 : 10, anchor: 'end', fill: ink })
           : text(s.x + s.w - 8, s.y + 18, count > 99 ? '99+' : String(count), { font: 'mono', anchor: 'end', fill: ink })
         : '')
     pins += `<circle cx="${s.pin[0]}" cy="${s.pin[1]}" r="3.5" fill="${C.canvas}" stroke="${isLive ? C.accent : C.port}" stroke-width="1.5"/>`

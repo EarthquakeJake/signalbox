@@ -333,7 +333,7 @@ export function line(x: number, y: number, pieces: Piece[], most: number, size =
 }
 
 /** The words under a lane's name about its staging. */
-function stagingPieces(lane: Lane, now: number, stagingName: string): Piece[] {
+export function stagingPieces(lane: Lane, now: number, stagingName: string): Piece[] {
   if (lane.isParked === true) return [{ words: lane.staging === undefined ? 'Set aside' : `Set aside · ${stagingName} ${agoOf(lane.staging.updatedAt, now)}`, fill: C.muted }]
   // A staging name in capitals (UAT) keeps them; a word (Staging) goes lower case in the middle of the line.
   if (lane.staging === undefined) return [{ words: `No ${/^[A-Z0-9]+$/.test(stagingName) ? stagingName : stagingName.toLowerCase()} yet`, fill: TONE.warn.ink }]
@@ -344,6 +344,14 @@ function stagingPieces(lane: Lane, now: number, stagingName: string): Piece[] {
   }
   const words = stagingWords(lane, now)
   return [{ words: `${stagingName} ${words.when}`, fill: C.muted }, ...(words.news === '' ? [] : [{ words: ` · ${words.news}`, fill: words.tone }])]
+}
+
+/** The same words without the age, for a narrow row: "UAT · not yet", "UAT = live", "UAT 2h ago" where there is no news. */
+export function stagingShort(lane: Lane, now: number, stagingName: string): Piece[] {
+  if (lane.isParked === true || lane.staging === undefined) return stagingPieces(lane, now, stagingName)
+  if (lane.isStagingLive === true) return [{ words: `${stagingName} = live`, fill: C.muted }]
+  const words = stagingWords(lane, now)
+  return words.news === '' ? [{ words: `${stagingName} ${words.when}`, fill: C.muted }] : [{ words: `${stagingName} · `, fill: C.muted }, { words: words.news, fill: words.tone }]
 }
 
 /**
@@ -430,8 +438,26 @@ const laneOfBranch = (repo: ClashSource, name: string): Lane | undefined => (rep
  */
 export function isRoutine(repo: ClashSource, c: Clash): boolean {
   if (c.level !== 'overlap' || c.isUncommitted === true || c.files.length !== 1) return false
+  return sharedLane(repo, c) !== undefined
+}
+
+/** A clash with the lane both its branches share, as Data gives it (`Clash.lane`, on data/clash-fixes). */
+type LanedClash = Clash & { lane?: string }
+
+/**
+ * The lane both branches of a clash belong to, if they share one. Data says so in
+ * `Clash.lane` (the lane's id), which counts every branch, not only the few a lane
+ * lists: where the repository's clashes carry it, it decides, and a clash without
+ * one crosses lanes. Older readings without it fall back to the lanes' open lists.
+ */
+function sharedLane(repo: ClashSource, c: Clash): Lane | undefined {
+  const all = (repo.clashes ?? []) as LanedClash[]
+  if (all.some(x => x.lane !== undefined)) {
+    const id = (c as LanedClash).lane
+    return id === undefined ? undefined : (repo.lanes ?? []).find(lane => lane.id === id || lane.name === id) ?? { name: id, branches: 0, isHere: false }
+  }
   const lane = laneOfBranch(repo, c.a)
-  return lane !== undefined && lane === laneOfBranch(repo, c.b)
+  return lane !== undefined && lane === laneOfBranch(repo, c.b) ? lane : undefined
 }
 
 /** The clashes worth a mark: every conflict, and the overlaps that cross lanes or files or hold uncommitted work. */
@@ -442,7 +468,7 @@ export function sharedFiles(repo: ClashSource): Array<{ lane: Lane; file: string
   const groups = new Map<string, { lane: Lane; file: string; names: Set<string> }>()
   for (const c of repo.clashes ?? []) {
     if (!isRoutine(repo, c)) continue
-    const lane = laneOfBranch(repo, c.a) as Lane
+    const lane = sharedLane(repo, c) as Lane
     const file = c.files[0] as string
     const key = `${lane.name}\u0000${file}`
     const group = groups.get(key) ?? { lane, file, names: new Set<string>() }
@@ -532,7 +558,7 @@ export const STATION_TONE: Record<string, string> = {
  * the first line; what is in flight, the worst of its branches and its staging
  * on the second. The lit lane is the one you are working in.
  */
-export function laneLine(lane: Lane, cy: number, now: number, colour: string, isLit: boolean, source?: ClashSource): string {
+export function laneLine(lane: Lane, cy: number, now: number, colour: string, isLit: boolean, source?: ClashSource, stagingName = 'Staging'): string {
   const right = 884
   let out = `<g${lane.isParked === true ? ' opacity="0.45"' : ''}>`
   out += laneTile(lane, 660, cy - 10, 20, colour, isLit)
@@ -549,7 +575,8 @@ export function laneLine(lane: Lane, cy: number, now: number, colour: string, is
   const far = flags.filter(f => f.some(flag => flag.tone === 'danger')).length
   const stale = flags.filter(f => f.some(flag => flag.tone === 'warn')).length
   // A clash among its branches outranks both: the wide board shows marks and counts, not who clashes with whom.
-  const levels = (lane.open ?? []).map(b => (source === undefined ? undefined : clashOf(source, b.name, b.clash)?.level) ?? b.clash)
+  // With the repository's list to hand it decides, routine overlaps included (they count nothing); the branch's own mark only without it.
+  const levels = (lane.open ?? []).map(b => (source === undefined ? b.clash : clashOf(source, b.name, b.clash)?.level))
   const conflicts = levels.filter(l => l === 'conflict').length
   const overlaps = levels.filter(l => l === 'overlap').length
   const worst =
@@ -558,12 +585,18 @@ export function laneLine(lane: Lane, cy: number, now: number, colour: string, is
       : overlaps > 0
         ? { words: `${overlaps} ${overlaps === 1 ? 'overlap' : 'overlaps'}`, tone: 'warn' as const }
         : far > 0 ? { words: `${far} far behind`, tone: 'danger' as const } : stale > 0 ? { words: `${stale} stale`, tone: 'warn' as const } : undefined
-  const pieces: Piece[] = [
-    { words: lane.isParked === true ? 'Parked' : inFlight(lane), fill: C.muted },
-    ...(worst === undefined ? [] : [{ words: ` · ${worst.words}`, fill: TONE[worst.tone].ink }]),
-    ...(lane.isParked === true ? [] : stagingPieces(lane, now, 'staging').map((p, at) => (at === 0 ? { ...p, words: ` · ${p.words}` } : p))),
-  ]
-  out += line(688, cy + 20, pieces, right - 688)
+  // The second line in order of what matters: the worst flag, then staging, then the branch count. Rather
+  // than cut, it drops words from the least important end: first the count, then the staging's age.
+  const flight: Piece = { words: lane.isParked === true ? 'Parked' : inFlight(lane), fill: C.muted }
+  const flag: Piece[] = worst === undefined ? [] : [{ words: worst.words, fill: TONE[worst.tone].ink }]
+  const staging = lane.isParked === true ? [] : stagingPieces(lane, now, stagingName)
+  const shortStaging = lane.isParked === true ? [] : stagingShort(lane, now, stagingName)
+  const join = (parts: Piece[][]): Piece[] =>
+    parts.filter(p => p.length > 0).flatMap((p, at) => (at === 0 ? p : [{ ...(p[0] as Piece), words: ` · ${(p[0] as Piece).words}` }, ...p.slice(1)]))
+  const room = right - 688
+  const fits = (pieces: Piece[]): boolean => pieces.reduce((n, p) => n + widthOf(p.words), 0) <= room
+  const tries = [join([[flight], flag, staging]), join([flag.length > 0 ? flag : [flight], staging]), join([flag.length > 0 ? flag : [flight], shortStaging])]
+  out += line(688, cy + 20, tries.find(fits) ?? (tries[2] as Piece[]), room)
 
   return `${out}</g>`
 }

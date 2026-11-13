@@ -20,7 +20,7 @@ for (const f of FIXTURES) {
       expect(found.filter(p => !known.includes(p))).toEqual([])
     })
     test(`layout: spine, ${f.title}, ${isWide ? 'wide' : 'tall'}: no text overlaps, crosses a wire or leaves the board`, () => {
-      const found = layoutProblems(drawSpine(f.board, isWide, f.now))
+      const found = layoutProblems(drawSpine(f.board, isWide, f.now, f.names))
       const known = KNOWN[`spine-${name}`] ?? []
       expect(found.filter(p => !known.includes(p))).toEqual([])
     })

@@ -1,7 +1,7 @@
 import type { Board, Lane, OpenBranch, StationId } from '../types'
 import { NAMES } from './draw'
 import {
-  C, FAR_BEHIND, STATION_TONE, TONE, WIDE_HEIGHT, agoOf, branchIn, clashInk, clashMark, clashOf, clashSummary, sharedFiles, strongClashes, esc, fit, fitMono, frame, isMadeUpName,
+  C, FAR_BEHIND, STATION_TONE, TONE, WIDE_HEIGHT, agoOf, branchIn, clashInk, clashMark, clashOf, clashSummary, sharedFiles, stagingPieces, strongClashes, esc, fit, fitMono, frame, isMadeUpName,
   laneColours, laneTile, line as textLine, liveWords, monoWidth, text, widthOf,
 } from './lanes'
 import type { Piece } from './lanes'
@@ -53,13 +53,6 @@ function describe(b: OpenBranch, laneNames: readonly string[]): string {
 const behindWords = (b: OpenBranch): { words: string; ink: string } | undefined =>
   b.behind >= FAR_BEHIND ? { words: `${b.behind} behind`, ink: TONE.danger.ink } : b.behind >= 20 ? { words: `${b.behind} behind`, ink: TONE.warn.ink } : undefined
 
-/** A lane's release state in a few words: what UAT holds against live. */
-function uatWords(lane: Lane): string {
-  if (lane.isParked === true) return 'parked'
-  if (lane.isStagingLive === true) return 'UAT same as live'
-  if (lane.staging === undefined) return 'no UAT yet'
-  return lane.staging.behind > 0 ? `UAT ${lane.staging.behind} behind` : 'UAT ahead of live'
-}
 
 /** A small pill holding a live tag, tinted in its lane's colour, starting at `x`. Returns the drawing and its right edge. */
 function livePill(x: number, cy: number, tag: string, colour: string, most = 140): { svg: string; right: number } {
@@ -243,7 +236,7 @@ function claudeBand(b: Board, x: number, y: number, w: number): string {
 }
 
 /** Tall: Claude across the top, where you are, then main down the left with each lane joining it and its branches under it. */
-function treeTall(b: Board, here: Here, now: number): string {
+function treeTall(b: Board, here: Here, now: number, stagingName: string): string {
   const W = 440
   const laneNames = (here.lanes ?? []).map(l => l.name)
   // Claude's band: 122 px, the ring clear of the band's edges and of the hairline under it.
@@ -281,9 +274,11 @@ function treeTall(b: Board, here: Here, now: number): string {
     out += text(80, cy + 1, esc(fit(g.lane.name, 424 - 80 - pillW - 12, 15, 600)), { size: 15, weight: 600, fill: C.text })
     const join = g.moved === 0 ? '' : `moved ${agoOf(g.moved, now)}`
     const joinW = join === '' ? 0 : monoWidth(join) + 12
-    const sub = g.isLoose ? 'not in any lane yet' : `${uatWords(g.lane)}${g.rows.length === 0 ? ' · nothing open' : ''}`
-    const warn = !g.isLoose && g.lane.staging === undefined && g.lane.isParked !== true
-    out += text(80, cy + 19, esc(fit(sub, 424 - 80 - joinW, 12)), { size: 12, fill: warn ? TONE.warn.ink : C.muted })
+    // Staging in the board's words exactly (one rule, one name), then "nothing open" where the lane has nothing.
+    const sub: Piece[] = g.isLoose
+      ? [{ words: 'not in any lane yet', fill: C.muted }]
+      : [...stagingPieces(g.lane, now, stagingName), ...(g.lane.branches === 0 && g.rows.length === 0 ? [{ words: ' · nothing open', fill: C.muted }] : [])]
+    out += textLine(80, cy + 19, sub, 424 - 80 - joinW, 12)
     if (join !== '') out += text(424, cy + 19, esc(join), { font: 'mono', anchor: 'end' })
     y += 48
     if (g.rows.length > 0) {
@@ -318,6 +313,12 @@ function treeTall(b: Board, here: Here, now: number): string {
       }
       y += 4
     }
+    // A lane lists at most a few of its open branches; the rest are counted, as on the board.
+    const more = g.isLoose ? 0 : Math.max(0, g.lane.branches - g.rows.length)
+    if (more > 0) {
+      out += text(74, y + 10, g.rows.length === 0 ? `${more} open` : `+${more} more`, { size: 12 })
+      y += 20
+    }
     out += `</g>`
     y += 12
   }
@@ -329,17 +330,22 @@ function treeTall(b: Board, here: Here, now: number): string {
     out += hair(16, 424, y)
     y += 8
     for (const c of clashes) {
+      // Two lines a clash, so nothing is cut: the two branches across the full width,
+      // then the level, as many of its files as fit whole, and whether it is uncommitted.
       y += 20
-      const pair = `${branchIn(c.a, 108)} × ${branchIn(c.b, 108)}`
-      const pairW = monoWidth(pair)
+      const half = (424 - 32 - monoWidth(' × ')) / 2
+      const pair = `${branchIn(c.a, half)} × ${branchIn(c.b, half)}`
       out += clashMark(21, y - 4, c.level) + text(32, y, esc(pair), { font: 'mono', fill: C.text })
-      const tail: Piece[] = [
-        // The file says more than whether it is uncommitted, so it comes first and is the last to be cut.
-        { words: c.level === 'conflict' ? 'conflict' : 'overlap', fill: clashInk(c.level) },
-        ...(c.files[0] === undefined ? [] : [{ words: ` · ${c.files[0]}`, fill: C.muted }]),
-        ...(c.isUncommitted === true ? [{ words: ' · uncommitted', fill: clashInk(c.level) }] : []),
-      ]
-      out += textLine(32 + pairW + 8, y, [{ words: '· ', fill: C.muted }, ...tail], 424 - (32 + pairW + 8))
+      y += 16
+      const level = `${c.level === 'conflict' ? 'conflict' : 'overlap'}${c.isUncommitted === true ? ', uncommitted' : ''}`
+      const room = 424 - 32 - widthOf(`${level} · `) - monoWidth(' +9')
+      const files: string[] = []
+      for (const f of c.files) if (monoWidth([...files, f].join(', ')) <= room) files.push(f)
+      const rest = c.files.length - files.length
+      const filesWords = files.length === 0 && c.files[0] !== undefined ? fitMono(c.files[0], room) : `${files.join(', ')}${rest > 0 ? ` +${rest}` : ''}`
+      out += text(32, y, esc(level), { fill: clashInk(c.level) })
+      if (filesWords !== '') out += text(32 + widthOf(level) + 4, y, esc(`· ${filesWords}`), { font: 'mono' })
+      y += 6
     }
     // Routine overlaps last, one quiet line per lane and file, in the lane's colour rather than amber.
     const colours = laneColours(here.lanes ?? [])
@@ -389,7 +395,7 @@ function wideLeft(b: Board, here: Here, laneNames: readonly string[], w: number)
  * branches), closest to main beside the tip. Parked lanes and branches in no lane
  * share one quiet column at the far left.
  */
-function treeWide(b: Board, here: Here, now: number): string {
+function treeWide(b: Board, here: Here, now: number, stagingName: string): string {
   const W = 900
   const laneNames = (here.lanes ?? []).map(l => l.name)
   const leftW = 196
@@ -422,7 +428,10 @@ function treeWide(b: Board, here: Here, now: number): string {
       if (y > 220) break
       out += `<g${g.lane.isParked === true ? ' opacity="0.55"' : ''}>`
       out += laneTile(g.lane, x + 2, y, 20, g.colour)
-      out += text(x + 28, y + 14, esc(fit(`${g.lane.name}${g.lane.isParked === true ? ' · parked' : ''}`, w - 30, 12.5, 600)), { size: 12.5, weight: 600, fill: C.text })
+      // "· parked" only where it fits whole; the faded group says parked already, so the name is never cut for it.
+      const parked = `${g.lane.name} · parked`
+      const title = g.lane.isParked === true && widthOf(parked, 12.5, 600) <= w - 30 ? parked : g.lane.name
+      out += text(x + 28, y + 14, esc(fit(title, w - 30, 12.5, 600)), { size: 12.5, weight: 600, fill: C.text })
       y += 30
       for (const item of g.rows.slice(0, 2)) {
         if (y > 230) break
@@ -449,13 +458,14 @@ function treeWide(b: Board, here: Here, now: number): string {
       out += livePill(x + 2, y, g.lane.live, g.colour, w - 20).svg
       y += 20
     }
-    const sub = uatWords(g.lane).replace(' same as live', ' = live')
-    const warn = g.lane.staging === undefined
-    out += text(x + 2, y + 4, esc(fit(g.moved === 0 ? sub : `${sub} · ${agoOf(g.moved, now)}`, w - 4)), { fill: warn ? TONE.warn.ink : C.muted })
+    // Staging in the board's words exactly: one rule, one name, in both views.
+    out += textLine(x + 2, y + 4, stagingPieces(g.lane, now, stagingName), w - 4)
     y += 14
-    if (g.rows.length === 0) out += text(x + 2, y + 18, 'nothing open', { fill: C.faint })
     // Up to three branches; with more, two and a count, so the column ends inside the board.
-    const shown = g.rows.length > 3 ? g.rows.slice(0, 2) : g.rows
+    // The lane's own count includes branches it does not list, so the "+N more" counts from that.
+    const open = Math.max(g.lane.branches, g.rows.length)
+    if (open === 0) out += text(x + 2, y + 18, 'nothing open', { fill: C.faint })
+    const shown = open > 3 ? g.rows.slice(0, 2) : g.rows
     shown.forEach((item, at) => {
       const ty = y + 10 + at * 40
       // Wide shows a clash by its mark alone; the tall spine and the board say who with.
@@ -468,7 +478,8 @@ function treeWide(b: Board, here: Here, now: number): string {
       })
       if (bw !== undefined) out += text(x + 13, ty + 28, esc(bw.words), { fill: bw.ink })
     })
-    if (g.rows.length > 3) out += text(x + 13, y + 10 + 2 * 40 + 14, `+${g.rows.length - 2} more`)
+    // With none listed, the count stands alone ("2 open"); otherwise it follows the listed ones.
+    if (open > shown.length) out += text(x + 13, y + 10 + shown.length * 40 + 14, shown.length === 0 ? `${open} open` : `+${open - shown.length} more`)
     x += w + gap
   }
 
@@ -490,7 +501,7 @@ const unreadWords = (repo: Board['repo']): string =>
  * and UAT state and its open branches hanging under it, said by what each is for.
  * Tall, main runs down the left under Claude's band; wide, along the top beside Claude's ring.
  */
-export function drawSpine(b: Board, isWide: boolean, now: number): string {
+export function drawSpine(b: Board, isWide: boolean, now: number, names: { staging: string } = { staging: 'Staging' }): string {
   const repo = b.repo
   if (repo === undefined || repo.kind !== 'repo') {
     // Claude still has its ring; the trunk waits, dashed, for git.
@@ -507,5 +518,5 @@ export function drawSpine(b: Board, isWide: boolean, now: number): string {
     return frame(440, out)
   }
 
-  return isWide ? treeWide(b, repo, now) : treeTall(b, repo, now)
+  return isWide ? treeWide(b, repo, now, names.staging) : treeTall(b, repo, now, names.staging)
 }
