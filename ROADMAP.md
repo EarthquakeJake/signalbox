@@ -14,6 +14,9 @@ The design reference is the **Refined board** page of the Release map canvas: ht
 
 ## Later
 
+- **Decisions on the rail** (idea, see [docs/ideas/decisions-on-the-rail.md](docs/ideas/decisions-on-the-rail.md)): pending decisions from an orchestrator's change review drawn as signals on the lanes and branches they hold up, with the evidence Signalbox already has attached to each.
+- **Stacked branches:** compare each overlapping pair from its own merge-base, so branches cut from another branch on purpose stop counting as overlaps. Data.
+- **Version in the pane:** `/signalbox` answers with the version, and a faint version mark in a corner, so an out-of-date chat is obvious. Release.
 - **Release train:** a train from trunk to live while a deploy runs, with an estimate from recent runs, and a "needs you" stop when UAT holds unreleased work. Needs `gh`, so opt-in.
 - **Ready to merge** per branch: a project names a per-branch tag in its track file (Silkscreen's is `dry-run-passed/<branch>`, force-moved to the commit its checks passed on), and a branch whose tip carries it gets a "ready" mark. Reading it locally needs fetching with `--force`, so it pairs with the fetch timer. Data and Board.
 - **Fetch on a timer**, opt-in, so teammates' pushed work shows.
