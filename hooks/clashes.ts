@@ -10,8 +10,8 @@ const MOST_WORKTREES = 12
 const MOST_STATUS = 4
 /** How long a worktree's uncommitted files are trusted before they are asked again. */
 const STALE_MS = 20000
-/** Branch pairs put through `merge-tree` per refresh, beyond those already known. */
-const MOST_MERGES = 6
+/** Branch pairs put through `merge-tree` per refresh, beyond those already known; the likeliest to matter go first. */
+const MOST_MERGES = 10
 /** Clashes kept, worst first. */
 const MOST_CLASHES = 8
 /** Uncommitted files kept per worktree, so a folder of build output cannot swamp the pane. */
@@ -149,6 +149,8 @@ export async function readClashes(
   merged: readonly Work[],
   branch: string,
   hereDirty: readonly string[],
+  /** Each branch's lane id, by name or by files; a branch in no lane is absent. */
+  laneOf: ReadonlyMap<string, string>,
   keptFiles: FilesKept,
   now: number,
 ): Promise<Clashing> {
@@ -199,9 +201,9 @@ export async function readClashes(
     committed.set(work.name, new Set(changed ?? []))
   }
 
-  const keptMerges = new Map<string, string[]>()
-  let merging = 0
-  const clashes: Clash[] = []
+  // Every pair whose work meets, first, so the merge-tree budget can go to the ones that matter most.
+  type Meeting = { a: Work; b: Work; shared: string[]; bothCommitted: string[]; lane?: string }
+  const meetings: Meeting[] = []
   for (let i = 0; i < members.length; i += 1) {
     for (let j = i + 1; j < members.length; j += 1) {
       const a = members[i] as Work
@@ -211,33 +213,51 @@ export async function readClashes(
       const allA = new Set([...inA, ...(dirty.get(a.name) ?? [])])
       const shared = [...new Set([...inB, ...(dirty.get(b.name) ?? [])])].filter(file => allA.has(file)).sort()
       if (shared.length === 0) continue
-      const bothCommitted = shared.filter(file => inA.has(file) && inB.has(file))
+      const laneA = laneOf.get(a.name)
+      const lane = laneA !== undefined && laneA === laneOf.get(b.name) ? laneA : undefined
+      meetings.push({ a, b, shared, bothCommitted: shared.filter(file => inA.has(file) && inB.has(file)), ...(lane === undefined ? {} : { lane }) })
+    }
+  }
 
-      // Only committed work can be merged; each pair is put through merge-tree once per pair of commits.
-      let conflicted: string[] | undefined
-      if (bothCommitted.length > 0) {
-        const [x, y] = a.sha < b.sha ? [a.sha, b.sha] : [b.sha, a.sha]
-        const before = keptMerges.get(`${x}:${y}`) ?? merges.get(`${x}:${y}`)
-        if (before !== undefined) {
-          keptMerges.set(`${x}:${y}`, before)
-          conflicted = before
-        } else if (merging < MOST_MERGES) {
-          merging += 1
-          conflicted = await conflictsOf($, cwd, x, y, keptMerges)
-        }
-      }
-      const isConflict = conflicted !== undefined && conflicted.length > 0
-      const isUncommitted = shared.length > bothCommitted.length
-      clashes.push({
-        a: a.name,
-        b: b.name,
-        level: isConflict ? 'conflict' : 'overlap',
-        files: [...new Set([...(isConflict ? (conflicted ?? []) : []), ...shared])].slice(0, 3),
-        ...(isUncommitted ? { isUncommitted: true } : {}),
-      })
+  // Only committed work can be merged; each pair is put through merge-tree once per pair of commits. Pairs
+  // across lanes go first, then those sharing the most files, and same-lane pairs sharing one file last,
+  // since those are routine unless they conflict.
+  const keyOf = (meeting: Meeting): string => (meeting.a.sha < meeting.b.sha ? `${meeting.a.sha}:${meeting.b.sha}` : `${meeting.b.sha}:${meeting.a.sha}`)
+  const urgency = (meeting: Meeting): number => (meeting.lane === undefined ? 0 : meeting.bothCommitted.length > 1 ? 1 : 2)
+  const keptMerges = new Map<string, string[]>()
+  const verdicts = new Map<Meeting, string[]>()
+  const queue = meetings
+    .filter(meeting => meeting.bothCommitted.length > 0)
+    .sort((p, q) => urgency(p) - urgency(q) || q.bothCommitted.length - p.bothCommitted.length)
+  let merging = 0
+  for (const meeting of queue) {
+    const key = keyOf(meeting)
+    const before = keptMerges.get(key) ?? merges.get(key)
+    if (before !== undefined) {
+      keptMerges.set(key, before)
+      verdicts.set(meeting, before)
+    } else if (merging < MOST_MERGES) {
+      merging += 1
+      const [x, y] = key.split(':') as [string, string]
+      const found = await conflictsOf($, cwd, x, y, keptMerges)
+      if (found !== undefined) verdicts.set(meeting, found)
     }
   }
   merges = keptMerges
+
+  const clashes = meetings.map((meeting): Clash => {
+    const conflicted = verdicts.get(meeting) ?? []
+    const isConflict = conflicted.length > 0
+
+    return {
+      a: meeting.a.name,
+      b: meeting.b.name,
+      level: isConflict ? 'conflict' : 'overlap',
+      files: [...new Set([...conflicted, ...meeting.shared])].slice(0, 3),
+      ...(meeting.shared.length > meeting.bothCommitted.length ? { isUncommitted: true } : {}),
+      ...(meeting.lane === undefined ? {} : { lane: meeting.lane }),
+    }
+  })
 
   const byBranch = new Map<string, Clash['level']>()
   for (const clash of clashes) {

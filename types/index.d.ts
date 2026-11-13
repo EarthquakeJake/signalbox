@@ -69,6 +69,8 @@ export type Clash = {
   files: string[]
   /** True where uncommitted work in a worktree, not only commits, is part of the clash. */
   isUncommitted?: boolean
+  /** The lane's id when both branches are in the same lane, by name or by files; absent across lanes or where either is in none. */
+  lane?: string
 }
 
 /** One lane as it stands now. */
