@@ -245,6 +245,11 @@ export function layoutProblems(svg: string, give = 1): string[] {
       const a = texts[i] as Text
       const b = texts[j] as Text
       if (overlap(a, b, give)) out.push(`${show(a)} overlaps ${show(b)}`)
+      // Two texts on one baseline need a gap the eye reads as one: under 2 px they run together ("Shell20").
+      else if (Math.abs(a.bottom - b.bottom) < 0.5) {
+        const gap = a.left < b.left ? b.left - a.right : a.left - b.right
+        if (gap >= -give && gap < 2) out.push(`${show(a)} touches ${show(b)}`)
+      }
     }
   }
   for (const t of texts) {

@@ -378,7 +378,23 @@ function withClashes(id: string, title: string, clashes: Clash[], more: Record<s
 const pairs = (names: string[], file: string): Clash[] =>
   names.flatMap((a, i) => names.slice(i + 1).map(b => ({ a, b, level: 'overlap' as const, files: [file] })))
 
+/** A fixture's board with every station counted in two figures, the narrow chips' hardest case. */
+const chipCounts = (): Fixture => {
+  const base = FIXTURES.find(f => f.id === 'lane-cards') as Fixture
+  return { ...base, id: 'chip-counts', title: 'Two-figure counts on every chip', board: { ...base.board, counts: { you: 12, skills: 20, hooks: 20, memory: 20, model: 48, agents: 20, browser: 20, network: 20, files: 20, shell: 20 } } }
+}
+
 FIXTURES.push(
+  chipCounts(),
+  withClashes(
+    'clash-hidden-branch',
+    'App pairs with a fifth branch the lane does not list, routine by Clash.lane; one overlap crosses lanes',
+    [
+      // Data's Clash.lane, read here without the type: it says both branches share a lane, listed or not.
+      ...pairs(['app/board-check', 'app/pins-tooltip', 'app/routing-order', 'app/hidden-fifth'], 'public/app/index.html').map(c => ({ ...c, lane: 'app' })),
+      { a: 'platform/branch-prefix', b: 'app/hidden-fifth', level: 'overlap', files: ['hooks/tracks.ts'] },
+    ] as Clash[],
+  ),
   withClashes(
     'clash-silkscreen',
     'Silkscreen as git read it: one conflict, and six routine App overlaps on one file',
