@@ -7,9 +7,8 @@ The design reference is the **Refined board** page of the Release map canvas: ht
 | Track | Work | Branch |
 | --- | --- | --- |
 | Design | Spine options on the canvas (2–3, from real Silkscreen data): calmer and more colourful, more room for the Claude ring, a minimal legend, no scale sentence. Jake picks one. | canvas |
-| Data | `OpenBranch.subject` (each branch's newest commit subject, as its description), `Lane.isStagingLive` (staging holds exactly what is live), and lane counts checked against Silkscreen's local branches. | `data/descriptions` |
 | Quality | Both views fit the pane: as large as it allows, never larger, never running off the bottom. And the redraw for height-only resizes. | `quality/fit-pane` |
-| Board | "UAT · same as live" instead of commit counts; every lane's live release on the spine when on the trunk; branch descriptions on cards and the spine. Then the spine option Jake picks. | `board/descriptions` |
+| Board | The spine option Jake picks; also your own branch's description in the lit lane, not its made-up name. | `board/spine-2` |
 
 ## Next
 
@@ -31,6 +30,7 @@ The design reference is the **Refined board** page of the Release map canvas: ht
 
 ## Done
 
+- 0.13.0: branches described by their newest commit where their name is made up; "UAT · same as live" where staging holds what is live; every lane's live release on the spine when on the trunk; no scale sentence.
 - 0.12.0: option A from "Board, slimmer": tighter lane cards (726 to 666 px on Silkscreen) and each tool station's icon in its own colour, on the board and the spine.
 - 0.11.1: release pills on the spine are never cut, branches in no lane show on it, and tracks named board, data, quality or release get their own icons.
 - 0.11.0: option 3, the spine, switched with `/signalbox spine` and `/signalbox board`; the drawing is centred rather than stretched in a broad pane.
