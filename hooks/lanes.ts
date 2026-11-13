@@ -73,9 +73,14 @@ export function drawLanes(lanes: readonly Lane[], shape: Shape, now: number, col
     const tagY = isOne ? padLine + 4 : topLine
     const wireFrom = shape.bus + 32
 
+    const name = esc(cut(lane.name, shape.nameChars ?? 16))
+
+    // The halo that breaks the bus behind a name is drawn at full strength,
+    // outside the faded group, so a parked lane hides the bus as well as any.
+    out += `<text x="${shape.left}" y="${nameY}" ${sans} font-size="11" font-weight="600" fill="none" stroke="${C.canvas}" stroke-width="4" stroke-linejoin="round">${name}</text>`
     out += `<g${faded}>`
     out +=
-      `<text x="${shape.left}" y="${nameY}" ${sans} font-size="11" font-weight="600" fill="${isLit ? C.hl : C.text}" stroke="${C.canvas}" stroke-width="4" stroke-linejoin="round" paint-order="stroke">${esc(cut(lane.name, shape.nameChars ?? 16))}</text>` +
+      `<text x="${shape.left}" y="${nameY}" ${sans} font-size="11" font-weight="600" fill="${isLit ? C.hl : C.text}">${name}</text>` +
       (lane.live === undefined
         ? ''
         : `<text x="${shape.right}" y="${tagY}" text-anchor="end" ${mono} font-size="11" fill="${C.muted}">${esc(cut(lane.live, shape.liveChars))}</text>`) +
