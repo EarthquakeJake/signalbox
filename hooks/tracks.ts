@@ -1,6 +1,6 @@
 import type { EngineInterface } from 'claude-code'
 
-import type { Lane, Stage, TrackSpec } from '../types'
+import type { Lane, OpenBranch, Stage, TrackSpec } from '../types'
 import { matches, pickLane, type Pick } from './paths'
 
 /** Where a project may declare its lanes; the first one found wins. */
@@ -59,6 +59,34 @@ async function pickOf($: EngineInterface, cwd: string, trunkRef: string, trunkSh
   kept.set(ref, { key, pick })
 
   return pick
+}
+
+/** Open branches listed under a lane at most; `branches` still counts them all. */
+const MOST_LISTED = 4
+
+type Spread = { ahead: number; behind: number }
+
+// Each listed branch's ahead and behind, kept against the commits it and the
+// trunk stood at, as `placed` is, so a count runs only when one of them moves.
+let spreads = new Map<string, { key: string; spread: Spread }>()
+
+/** How far a branch has gone from the trunk, both ways. Undefined when git would not say, so a failure is asked again next time. */
+async function spreadOf($: EngineInterface, cwd: string, trunkRef: string, trunkSha: string, ref: string, sha: string, kept: Map<string, { key: string; spread: Spread }>): Promise<Spread | undefined> {
+  const key = `${sha}:${trunkSha}`
+  const before = spreads.get(ref)
+  if (before !== undefined && before.key === key) {
+    kept.set(ref, before)
+
+    return before.spread
+  }
+  const counted = (await git($, ['rev-list', '--left-right', '--count', `${trunkRef}...${sha}`], cwd)).split(/\s+/)
+  const behind = Number.parseInt(counted[0] ?? '', 10)
+  const ahead = Number.parseInt(counted[1] ?? '', 10)
+  if (!Number.isFinite(behind) || !Number.isFinite(ahead)) return undefined
+  const spread = { ahead: Math.max(0, ahead), behind: Math.max(0, behind) }
+  kept.set(ref, { key, spread })
+
+  return spread
 }
 
 /**
@@ -155,15 +183,26 @@ async function stageOf($: EngineInterface, cwd: string, trunkRef: string, spec: 
 }
 
 /** The lanes as they stand, and what became of placing your branch by its files where its name did not place it. */
-export type Placed = { lanes: Lane[]; guess?: 'none' | 'tied' }
+export type Placed = {
+  lanes: Lane[]
+  guess?: 'none' | 'tied'
+  /** Local branches already merged into the trunk, the trunk and the branch you are on apart; absent when git could not say. */
+  merged?: number
+}
 
 /** Fills in each declared lane: its open branches, its staging and what is live on it. */
 export async function readLanes($: EngineInterface, cwd: string, trunkRef: string, specs: readonly TrackSpec[], branch: string, now: number): Promise<Placed> {
   if (specs.length === 0) return { lanes: [] }
-  const rows = (await git($, ['for-each-ref', '--format=%(refname:short)%09%(objectname)', 'refs/heads'], cwd))
+  // Names, commits and commit times in the one call, so listing a lane's branches newest first costs nothing more.
+  const rows = (await git($, ['for-each-ref', '--format=%(refname:short)%09%(objectname)%09%(committerdate:unix)', 'refs/heads'], cwd))
     .split('\n')
     .map(one => one.trim().split('\t'))
-    .flatMap(([name, sha]) => (name === undefined || name === '' || sha === undefined ? [] : [{ name, sha }]))
+    .flatMap(([name, sha, at]) => {
+      if (name === undefined || name === '' || sha === undefined || sha === '') return []
+      const seconds = Number.parseInt(at ?? '', 10)
+
+      return [{ name, sha, updatedAt: Number.isFinite(seconds) ? Math.min(now, seconds * 1000) : 0 }]
+    })
   const heads = rows.map(row => row.name)
   const trunkName = trunkRef.replace(/^origin\//, '')
   const named = specs.map(spec => heads.filter(head => head !== trunkName && (spec.branches ?? []).some(pattern => matches(pattern, head))))
@@ -183,9 +222,12 @@ export async function readLanes($: EngineInterface, cwd: string, trunkRef: strin
   // Every branch whose name claims no lane is placed by what it changed, so a
   // lane's count covers the branches the desktop app names for you too.
   const byFiles = specs.map(() => 0)
+  // The branches each lane holds by their files, by name, for listing under it.
+  const placedIn = specs.map((): string[] => [])
   let here: Pick | undefined
+  // The trunk's commit, the key of both caches, asked once and only when some branch besides the trunk exists.
+  const trunkSha = heads.some(head => head !== trunkName) ? await git($, ['rev-parse', '--verify', '--quiet', `${trunkRef}^{commit}`], cwd) : ''
   if (specs.some(spec => (spec.paths ?? []).length > 0)) {
-    const trunkSha = await git($, ['rev-parse', '--verify', '--quiet', `${trunkRef}^{commit}`], cwd)
     if (trunkSha !== '') {
       const kept = new Map<string, { key: string; pick: Pick | undefined }>()
       const loose = rows
@@ -195,7 +237,10 @@ export async function readLanes($: EngineInterface, cwd: string, trunkRef: strin
         .slice(0, MOST_PLACED)
       for (const row of loose) {
         const pick = await pickOf($, cwd, trunkRef, trunkSha, row.name, row.sha, specs, kept)
-        if (pick?.kind === 'lane') byFiles[pick.index] = (byFiles[pick.index] ?? 0) + 1
+        if (pick?.kind === 'lane') {
+          byFiles[pick.index] = (byFiles[pick.index] ?? 0) + 1
+          placedIn[pick.index]?.push(row.name)
+        }
         if (row.name === branch) here = pick
       }
       // A detached head is no branch, so it is placed on its own.
@@ -207,11 +252,35 @@ export async function readLanes($: EngineInterface, cwd: string, trunkRef: strin
     }
   }
 
+  // Only the few branches shown under each lane are measured against the trunk.
+  const shaOf = new Map(rows.map(row => [row.name, row]))
+  const keptSpreads = new Map<string, { key: string; spread: Spread }>()
   const lanes: Lane[] = []
   for (let index = 0; index < specs.length; index += 1) {
     const spec = specs[index] as TrackSpec
     const mine = named[index] ?? []
     const extra = byFiles[index] ?? 0
+    const byName = mine.filter(isOpen)
+    const fromFiles = placedIn[index] ?? []
+    const shown = [...byName, ...fromFiles]
+      .flatMap(name => {
+        const row = shaOf.get(name)
+
+        return row === undefined ? [] : [row]
+      })
+      .sort((a, b) => b.updatedAt - a.updatedAt || a.name.localeCompare(b.name))
+      .slice(0, MOST_LISTED)
+    const listed: OpenBranch[] = []
+    for (const row of shown) {
+      const spread = trunkSha === '' ? undefined : await spreadOf($, cwd, trunkRef, trunkSha, row.name, row.sha, keptSpreads)
+      listed.push({
+        name: row.name,
+        ahead: spread?.ahead ?? 0,
+        behind: spread?.behind ?? 0,
+        updatedAt: row.updatedAt,
+        ...(fromFiles.includes(row.name) ? { isByFiles: true } : {}),
+      })
+    }
     const isGuessed = !isNamed && here?.kind === 'lane' && here.index === index
     const found = spec.stagingPath === undefined && spec.stagingBranch === undefined ? undefined : await stageOf($, cwd, trunkRef, spec, now)
     const tags = spec.tagPrefix === undefined ? '' : await git($, ['tag', '--sort=-creatordate', '--list', `${spec.tagPrefix}*`], cwd)
@@ -231,8 +300,10 @@ export async function readLanes($: EngineInterface, cwd: string, trunkRef: strin
     }
 
     lanes.push({
+      ...(spec.id === undefined ? {} : { id: spec.id }),
       name: spec.name,
-      branches: mine.filter(isOpen).length + extra,
+      branches: byName.length + extra,
+      open: listed,
       ...(extra > 0 ? { byFiles: extra } : {}),
       isHere: mine.includes(branch) || isGuessed,
       ...(isGuessed ? { isGuessed: true } : {}),
@@ -246,6 +317,11 @@ export async function readLanes($: EngineInterface, cwd: string, trunkRef: strin
 
   // Your branch was looked at by its files and could not be placed: say so, rather than go quietly dark.
   const guess = isNamed || branch === trunkName || here === undefined || here.kind === 'lane' ? undefined : here.kind
+  spreads = keptSpreads
 
-  return { lanes, ...(guess === undefined ? {} : { guess }) }
+  // What could be cleaned up: merged into the trunk, and not the trunk itself or the branch checked out here.
+  const unmerged = open
+  const merged = unmerged === undefined ? undefined : heads.filter(head => head !== trunkName && head !== branch && !unmerged.has(head)).length
+
+  return { lanes, ...(guess === undefined ? {} : { guess }), ...(merged === undefined ? {} : { merged }) }
 }
