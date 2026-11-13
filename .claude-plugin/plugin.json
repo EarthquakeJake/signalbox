@@ -1,6 +1,6 @@
 {
   "name": "signalbox",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A live circuit board beside the chat: Claude sits in the middle, its tools are pins that light up as they are used, and file and shell work is wired into a release track read from git. Switches between a tall and a wide layout by itself.",
   "author": {
     "name": "EarthquakeJake",
@@ -21,6 +21,24 @@
   "license": "MIT",
   "types": "./types/index.d.ts",
   "userConfig": {
+    "stagingName": {
+      "type": "string",
+      "title": "Name of the staging stage",
+      "default": "Staging",
+      "description": "What the middle stop of the release track is called in your project, such as Staging, UAT or Preview."
+    },
+    "stagingPath": {
+      "type": "string",
+      "title": "Staging folder",
+      "default": "",
+      "description": "A folder on the trunk whose newest commit means the staging stage was updated, such as public/uat. Left empty, the track shows what is uncommitted instead of a staging stop."
+    },
+    "liveName": {
+      "type": "string",
+      "title": "Name of the live stage",
+      "default": "Live",
+      "description": "What the last stop of the release track is called, such as Live or Production."
+    },
     "trunkBranch": {
       "type": "string",
       "title": "Trunk branch",

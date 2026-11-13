@@ -9,6 +9,16 @@ export type Row = {
   endedAt?: number
 }
 
+/** A stage of the release, read from the folder on the trunk that stands for it. */
+export type Stage = {
+  /** When a commit last touched that folder. */
+  updatedAt: number
+  /** The subject of that commit. */
+  subject: string
+  /** Commits the trunk has taken since, which the stage has not seen. */
+  behind: number
+}
+
 /** What git says about the folder this session works in. */
 export type Repo =
   | { kind: 'none' }
@@ -16,7 +26,9 @@ export type Repo =
       kind: 'repo'
       /** The branch checked out, or a short commit id when the head is detached. */
       branch: string
-      /** The trunk this branch is measured against, such as `main`. */
+      /** The trunk's ref, kept even while you stand on it. */
+      trunkRef?: string
+      /** The trunk this branch is measured against; absent while you are on it. */
       trunk?: string
       /** Commits on this branch that the trunk does not have. */
       ahead: number
@@ -26,6 +38,10 @@ export type Repo =
       dirty: number
       /** Commits not yet on the remote; absent when the branch has no remote. */
       unpushed?: number
+      /** The staging stage, when a folder was named for it. */
+      staging?: Stage
+      /** The newest tag on the trunk, which usually names what is live. */
+      tag?: string
     }
 
 export type Board = {

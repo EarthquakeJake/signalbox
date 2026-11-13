@@ -11,7 +11,13 @@ Signalbox is a mod for Claude Code (a plugin that adds a pane). It runs locally.
 - **Claude, in the middle.** The model in use, what it is doing right now, and how full the context window is.
 - **Ten stations as pins.** You, Skills, Hooks, Memory, Model, Agents, Browser, Network, Files and Shell. A station's wire shows a moving dash while a call is running and stays lit, with a count, once it has been used since your last message.
 - **Files and Shell feed the branch.** These are the two stations that change a repository. Their wires merge into a tag that counts the files edited since your last message, and run on into the release track.
-- **A release track, read from git.** Three stops: **Working** (files changed but not committed), **your branch** (commits the trunk does not have, with a copper dot when some are not pushed), and **the trunk** (main, master or whatever your remote calls its default, with how far behind you are). A stop lights up when there is work sitting at it.
+- **A release track, read from git.** Three stops, and what they are depends on your project.
+
+  Without a staging folder set: **Working** (files changed but not committed), **your branch** (commits the trunk does not have, with a copper dot when some are not pushed) and **the trunk** (main, master or whatever your remote calls its default, with how far behind you are).
+
+  With `stagingPath` set: **your branch**, **staging** (when that folder was last touched on the trunk, and how many commits the trunk has taken since) and **live** (the newest tag on the trunk). The caption carries the subject of the commit that last updated staging.
+
+  A stop lights up when there is work of yours sitting at it.
 - **A short feed.** The last four actions, under the board.
 
 ## Two layouts, chosen for you
@@ -49,24 +55,30 @@ Start a new session afterwards. The pane opens by itself; `/signalbox` opens it 
 
 | Setting | Default | What it does |
 | --- | --- | --- |
+| `stagingName` | `Staging` | The name of the middle stop, such as Staging, UAT or Preview. |
+| `stagingPath` | empty | A folder on the trunk whose newest commit means staging was updated, such as `public/uat`. Left empty, the track shows what is uncommitted instead of a staging stop. |
+| `liveName` | `Live` | The name of the last stop, such as Live or Production. |
 | `trunkBranch` | empty | The branch your work is measured against, such as `main`, `master` or `develop`. Left empty, Signalbox asks the remote which branch is its default and falls back to `main` or `master`. |
+
+A project whose staging is a published folder rather than a branch is the case `stagingPath` is for: the newest commit touching that folder is taken as the moment staging was last updated.
 
 ## What it reads, and what it does not
 
 Signalbox listens to the session's own events: when a turn starts and ends, when the model takes a step, and when a tool is called. From a tool call it keeps the tool's name and a few words for the feed (a file's name, a command's description). It keeps this in the session's state and nowhere else.
 
-For the release track it runs `git` in the session's own folder, read-only: `git status`, `git for-each-ref` or `git symbolic-ref`, and `git rev-list --count`. Nothing is written, nothing is fetched from a remote, and a repository that does not answer within five seconds is left alone. The read happens when a session starts, after a turn, after a call that touched files or the shell, and otherwise every twenty seconds.
+For the release track it runs `git` in the session's own folder, read-only: `git status`, `git for-each-ref` or `git symbolic-ref`, `git rev-list --count`, and, where a staging folder is set, `git log -1` on that folder and `git describe --tags`. Nothing is written, nothing is fetched from a remote, and a repository that does not answer within five seconds is left alone. The read happens when a session starts, after a turn, after a call that touched files or the shell, and otherwise every twenty seconds.
 
 It makes no network requests of its own, reads no files, and calls no model. It never changes or blocks a tool call: every event is passed on untouched.
 
 ## Roadmap
 
-- **Deploy stages.** Stops for staging and production, where a project has a source for them, with names of its own.
+- **Several tracks at once.** One lane per deployable part of a project, each with its own branch, staging and live stops.
+- **Real deploy status.** What a stage is actually serving, where a project has a source for that, rather than inferring it from commits.
 - **More views.** A tracks view and a spine view of all open branches, switchable under the board.
 
 ## Status
 
-Version 0.2.0, an early release. Built and tried on Claude Code 2.1.321 in the desktop app on Windows. Other surfaces are covered by the mod's tests but have not been tried by hand. The test engine serves no processes, so the git reading is covered by its failing case alone and was checked by hand in a real repository.
+Version 0.3.0, an early release. Built and tried on Claude Code 2.1.321 in the desktop app on Windows. Other surfaces are covered by the mod's tests but have not been tried by hand. The test engine serves no processes, so the git reading is covered by its failing case alone and was checked by hand in a real repository.
 
 ## Development
 

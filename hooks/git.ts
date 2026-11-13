@@ -1,6 +1,6 @@
 import type { EngineInterface } from 'claude-code'
 
-import type { Repo } from '../types'
+import type { Repo, Stage } from '../types'
 
 const NONE: Repo = { kind: 'none' }
 
@@ -17,20 +17,7 @@ async function git($: EngineInterface, argv: readonly string[], cwd: string): Pr
   }
 }
 
-/** The branch everything else is measured against: the configured one, else the remote's own default, else main or master. */
-async function trunkOf($: EngineInterface, cwd: string, asked: string): Promise<string | undefined> {
-  if (asked !== '') {
-    const has = await git($, ['rev-parse', '--verify', '--quiet', `${asked}^{commit}`], cwd)
-
-    return has !== undefined && has.exitCode === 0 ? asked : undefined
-  }
-  const head = await git($, ['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD'], cwd)
-  const named = head?.stdout.trim() ?? ''
-  if (head?.exitCode === 0 && named !== '') return named
-  const refs = await git($, ['for-each-ref', '--format=%(refname:short)', 'refs/remotes/origin/main', 'refs/remotes/origin/master', 'refs/heads/main', 'refs/heads/master'], cwd)
-
-  return refs?.stdout.split('\n').map(line => line.trim()).find(line => line !== '')
-}
+const said = (ran: Run | undefined): string => (ran !== undefined && ran.exitCode === 0 ? ran.stdout.trim() : '')
 
 const countOf = (text: string, at: number): number => {
   const part = text.trim().split(/\s+/)[at]
@@ -38,11 +25,48 @@ const countOf = (text: string, at: number): number => {
   return part === undefined ? 0 : Math.max(0, Number.parseInt(part, 10) || 0)
 }
 
+/** The branch everything else is measured against: the configured one, else the remote's own default, else main or master. */
+async function trunkOf($: EngineInterface, cwd: string, asked: string): Promise<string | undefined> {
+  if (asked !== '') {
+    const has = await git($, ['rev-parse', '--verify', '--quiet', `${asked}^{commit}`], cwd)
+
+    return said(has) === '' ? undefined : asked
+  }
+  const named = said(await git($, ['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD'], cwd))
+  if (named !== '') return named
+  const refs = await git($, ['for-each-ref', '--format=%(refname:short)', 'refs/remotes/origin/main', 'refs/remotes/origin/master', 'refs/heads/main', 'refs/heads/master'], cwd)
+
+  return said(refs)
+    .split('\n')
+    .map(line => line.trim())
+    .find(line => line !== '')
+}
+
 /**
- * Reads the branch picture in three git calls: what is uncommitted, what the
- * trunk is, and how far this branch stands from it.
+ * The stage a folder on the trunk stands for: when a commit last touched that
+ * folder, and how far the trunk has moved on since. A project whose staging is
+ * a folder it publishes, rather than a branch, still has this.
  */
-export async function readRepo($: EngineInterface, cwd: string, asked: string): Promise<Repo> {
+async function stageOf($: EngineInterface, cwd: string, trunkRef: string, path: string, now: number): Promise<Stage | undefined> {
+  const line = said(await git($, ['log', '-1', '--format=%H%x09%ct%x09%s', trunkRef, '--', path], cwd))
+  if (line === '') return undefined
+  const parts = line.split('\t')
+  const sha = parts[0]
+  const at = parts[1]
+  if (sha === undefined || at === undefined) return undefined
+  const seconds = Number.parseInt(at, 10)
+  if (!Number.isFinite(seconds)) return undefined
+  const after = said(await git($, ['rev-list', '--count', `${sha}..${trunkRef}`], cwd))
+
+  return {
+    updatedAt: Math.min(now, seconds * 1000),
+    subject: parts.slice(2).join('\t').slice(0, 72),
+    behind: after === '' ? 0 : countOf(after, 0),
+  }
+}
+
+/** Reads the branch picture: what is uncommitted, where this branch stands, and what the stages hold. */
+export async function readRepo($: EngineInterface, cwd: string, asked: string, stagingPath: string): Promise<Repo> {
   const status = await git($, ['status', '--porcelain=v2', '--branch'], cwd)
   if (status === undefined || status.exitCode !== 0) return NONE
 
@@ -57,29 +81,41 @@ export async function readRepo($: EngineInterface, cwd: string, asked: string): 
     else if (/^[12u?] /.test(line)) dirty += 1
   }
   if (branch === '' || branch === '(detached)') {
-    const head = await git($, ['rev-parse', '--short', 'HEAD'], cwd)
-    branch = head?.stdout.trim() ?? 'detached'
+    branch = said(await git($, ['rev-parse', '--short', 'HEAD'], cwd)) || 'detached'
   }
 
-  const trunk = await trunkOf($, cwd, asked)
-  const isTrunk = trunk !== undefined && (trunk === branch || trunk.endsWith(`/${branch}`))
+  const trunkRef = await trunkOf($, cwd, asked)
+  const isTrunk = trunkRef !== undefined && (trunkRef === branch || trunkRef.endsWith(`/${branch}`))
   let ahead = 0
   let behind = 0
-  if (trunk !== undefined && !isTrunk) {
-    const spread = await git($, ['rev-list', '--left-right', '--count', `${trunk}...HEAD`], cwd)
-    if (spread !== undefined && spread.exitCode === 0) {
-      behind = countOf(spread.stdout, 0)
-      ahead = countOf(spread.stdout, 1)
+  if (trunkRef !== undefined && !isTrunk) {
+    const spread = said(await git($, ['rev-list', '--left-right', '--count', `${trunkRef}...HEAD`], cwd))
+    if (spread !== '') {
+      behind = countOf(spread, 0)
+      ahead = countOf(spread, 1)
     }
+  }
+
+  let staging: Stage | undefined
+  let tag: string | undefined
+  if (trunkRef !== undefined) {
+    if (stagingPath !== '') {
+      const now = await $.clock.now()
+      staging = await stageOf($, cwd, trunkRef, stagingPath, now)
+    }
+    tag = said(await git($, ['describe', '--tags', '--abbrev=0', trunkRef], cwd)) || undefined
   }
 
   return {
     kind: 'repo',
     branch,
-    ...(trunk !== undefined && !isTrunk ? { trunk } : {}),
+    ...(trunkRef === undefined ? {} : { trunkRef }),
+    ...(trunkRef !== undefined && !isTrunk ? { trunk: trunkRef } : {}),
     ahead,
     behind,
     dirty,
     ...(upstream === '' ? {} : { unpushed: unpushed ?? 0 }),
+    ...(staging === undefined ? {} : { staging }),
+    ...(tag === undefined ? {} : { tag }),
   }
 }

@@ -106,7 +106,20 @@ function wire(d: string, wear: Wear): string {
   )
 }
 
-export function drawBoard(b: Board, isWide: boolean): string {
+/** How long ago, in the fewest characters that still say it. */
+const agoOf = (then: number, now: number): string => {
+  const mins = Math.max(0, Math.round((now - then) / 60000))
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hours = Math.round(mins / 60)
+  if (hours < 48) return `${hours}h ago`
+
+  return `${Math.round(hours / 24)}d ago`
+}
+
+export type TrackNames = { staging: string; live: string }
+
+export function drawBoard(b: Board, isWide: boolean, names: TrackNames, now: number): string {
   const L = isWide ? WIDE : TALL
   const wearOf = (id: StationId): Wear => ((b.live[id] ?? 0) > 0 ? 'live' : (b.counts[id] ?? 0) > 0 ? 'used' : 'idle')
   const ids = Object.keys(L.spots) as StationId[]
@@ -159,34 +172,59 @@ export function drawBoard(b: Board, isWide: boolean): string {
   const unpushed = here?.unpushed
 
   type Stop = { name: string; under: string; count: string; isLit: boolean; isMarked?: boolean }
+  const blank: Stop = { name: '', under: '', count: '', isLit: false }
+  const working: Stop = {
+    name: 'Working',
+    under: dirty === 0 ? 'clean' : `${dirty} file${dirty === 1 ? '' : 's'}`,
+    count: dirty === 0 ? '' : String(dirty),
+    isLit: dirty > 0,
+  }
+  const onBranch: Stop = {
+    name: here === undefined ? 'Branch' : short(here.branch, 15),
+    under:
+      dirty > 0
+        ? `${dirty} uncommitted`
+        : unpushed === undefined
+          ? 'no remote'
+          : unpushed > 0
+            ? `${unpushed} to push`
+            : 'pushed',
+    count: ahead === 0 ? '' : `+${ahead}`,
+    isLit: ahead > 0 || dirty > 0,
+    isMarked: unpushed !== undefined && unpushed > 0,
+  }
+
+  // With a staging folder named, the track reads as the release does: branch,
+  // then staging, then live. Without one, it shows what git alone can say.
   const stops: [Stop, Stop, Stop] =
     here === undefined
-      ? [
-          { name: 'Working', under: '', count: '', isLit: false },
-          { name: 'Branch', under: '', count: '', isLit: false },
-          { name: 'Trunk', under: '', count: '', isLit: false },
-        ]
-      : [
-          {
-            name: 'Working',
-            under: dirty === 0 ? 'clean' : `${dirty} file${dirty === 1 ? '' : 's'}`,
-            count: dirty === 0 ? '' : String(dirty),
-            isLit: dirty > 0,
-          },
-          {
-            name: short(here.branch, 16),
-            under: unpushed === undefined ? 'no remote' : unpushed === 0 ? 'pushed' : `${unpushed} to push`,
-            count: ahead === 0 ? '' : `+${ahead}`,
-            isLit: ahead > 0,
-            isMarked: unpushed !== undefined && unpushed > 0,
-          },
-          {
-            name: here.trunk === undefined ? 'trunk' : short(here.trunk.replace(/^origin\//, ''), 16),
-            under: here.trunk === undefined ? 'you are on it' : behind === 0 ? 'level' : `${behind} behind`,
-            count: behind === 0 ? '' : String(behind),
-            isLit: false,
-          },
-        ]
+      ? [{ ...blank, name: 'Working' }, { ...blank, name: 'Branch' }, { ...blank, name: 'Trunk' }]
+      : here.staging !== undefined
+        ? [
+            onBranch,
+            {
+              name: short(names.staging, 15),
+              under: `updated ${agoOf(here.staging.updatedAt, now)}`,
+              count: here.staging.behind === 0 ? '' : String(here.staging.behind),
+              isLit: false,
+            },
+            {
+              name: short(names.live, 15),
+              under: here.tag === undefined ? 'the trunk' : short(here.tag, 15),
+              count: '',
+              isLit: false,
+            },
+          ]
+        : [
+            working,
+            onBranch,
+            {
+              name: here.trunk === undefined ? 'trunk' : short(here.trunk.replace(/^origin\//, ''), 15),
+              under: here.trunk === undefined ? 'you are on it' : behind === 0 ? 'level' : `${behind} behind`,
+              count: behind === 0 ? '' : String(behind),
+              isLit: false,
+            },
+          ]
 
   const [n1, n2, n3] = L.nodes
   const anchorOf = (at: number, x: number): string =>
@@ -206,7 +244,7 @@ export function drawBoard(b: Board, isWide: boolean): string {
       `<text ${anchorOf(at, x)} y="${L.labelY}" ${SANS} font-size="11" fill="${stop.isLit ? C.hl : C.muted}">${esc(stop.name)}</text>` +
       (stop.under === '' ? '' : `<text ${anchorOf(at, x)} y="${L.labelY + 15}" ${SANS} font-size="11" fill="${C.muted}">${esc(stop.under)}</text>`)
   }
-  track += `<text x="${L.caption.x}" y="${L.caption.y}" ${SANS} font-size="11" fill="${C.muted}">${here === undefined ? (repo === undefined ? 'Reading the repository…' : 'No git repository in this folder') : 'Release track'}</text>`
+  track += `<text x="${L.caption.x}" y="${L.caption.y}" ${SANS} font-size="11" fill="${C.muted}">${here === undefined ? (repo === undefined ? 'Reading the repository…' : 'No git repository in this folder') : here.staging === undefined ? 'Release track' : esc(short(here.staging.subject, isWide ? 46 : 34))}</text>`
 
   const headY = isWide ? 16 : 24
   const head =

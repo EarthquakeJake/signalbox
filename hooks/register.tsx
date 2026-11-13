@@ -120,6 +120,7 @@ const took = (row: Row): string => {
 // The folder the session works in and the trunk to measure against, set when the module loads.
 let where: string | undefined
 let asked = ''
+let stagingPath = ''
 let readAt = 0
 let isReading = false
 
@@ -132,7 +133,7 @@ async function refresh($: EngineInterface, isForced: boolean): Promise<void> {
   isReading = true
   readAt = now
   try {
-    const repo = await readRepo($, where, asked)
+    const repo = await readRepo($, where, asked, stagingPath)
     await quietly(() => update($, board, b => ({ ...b, repo })))
   } finally {
     isReading = false
@@ -141,6 +142,11 @@ async function refresh($: EngineInterface, isForced: boolean): Promise<void> {
 
 export const register: Register = (on, options) => {
   asked = typeof options?.trunkBranch === 'string' ? options.trunkBranch.trim() : ''
+  stagingPath = typeof options?.stagingPath === 'string' ? options.stagingPath.trim() : ''
+  const names = {
+    staging: typeof options?.stagingName === 'string' && options.stagingName.trim() !== '' ? options.stagingName.trim() : 'Staging',
+    live: typeof options?.liveName === 'string' && options.liveName.trim() !== '' ? options.liveName.trim() : 'Live',
+  }
 
   on('session.start', async ($, e, next) => {
     await quietly(() => $.command.register({ name: 'signalbox', description: 'Open the Signalbox pane' }))
@@ -231,6 +237,7 @@ export const register: Register = (on, options) => {
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const state = await read($, board)
+    const now = (await quietly(() => $.clock.now())) ?? 0
     const { Box, Text } = $.ui.resolve(e)
     const rows = state.rows.filter(r => r.station !== 'model').slice(-4)
     const feed =
@@ -256,7 +263,7 @@ export const register: Register = (on, options) => {
 
     return (
       <Box flexDirection="column" gap={1}>
-        <Svg source={drawBoard(state, isWide)} alt={alt} />
+        <Svg source={drawBoard(state, isWide, names, now)} alt={alt} />
         <Box flexDirection="column">{feed}</Box>
       </Box>
     )
