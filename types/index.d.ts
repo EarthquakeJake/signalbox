@@ -38,8 +38,25 @@ export type TrackSpec = {
   isParked?: boolean
 }
 
+/** One open branch of a lane, for listing under it. */
+export type OpenBranch = {
+  name: string
+  /** Commits on it that the trunk does not have. */
+  ahead: number
+  /** Commits on the trunk that it does not have. */
+  behind: number
+  /** When its newest commit was made, in milliseconds. */
+  updatedAt: number
+  /** True where it was placed in this lane by its files rather than its name. */
+  isByFiles?: boolean
+}
+
 /** One lane as it stands now. */
 export type Lane = {
+  /** The lane's id from the track file, where it has one; a stable key for its colour. */
+  id?: string
+  /** Its open branches, newest first, at most four. `branches` remains the full count. */
+  open?: OpenBranch[]
   name: string
   /** Open branches that belong to this lane: those not yet merged into the trunk. */
   branches: number
@@ -90,6 +107,8 @@ export type Repo =
       lanes?: Lane[]
       /** Your branch's name claimed no lane and its files could not settle one: none matched, or two lanes tied. */
       guess?: 'none' | 'tied'
+      /** Local branches already merged into the trunk, which could be cleaned up. */
+      merged?: number
     }
 
 export type Board = {
