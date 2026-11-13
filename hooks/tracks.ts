@@ -90,7 +90,7 @@ async function spreadOf($: EngineInterface, cwd: string, trunkRef: string, trunk
 }
 
 /** A local branch as for-each-ref gives it. */
-type Head = { name: string; sha: string; updatedAt: number }
+type Head = { name: string; sha: string; updatedAt: number; subject?: string }
 
 /** Branches to show, newest first and at most four, each measured against the trunk. */
 async function listOf($: EngineInterface, cwd: string, trunkRef: string, trunkSha: string, candidates: readonly Head[], fromFiles: readonly string[], kept: Map<string, { key: string; spread: Spread }>): Promise<OpenBranch[]> {
@@ -103,6 +103,7 @@ async function listOf($: EngineInterface, cwd: string, trunkRef: string, trunkSh
       ahead: spread?.ahead ?? 0,
       behind: spread?.behind ?? 0,
       updatedAt: row.updatedAt,
+      ...(row.subject === undefined ? {} : { subject: row.subject }),
       ...(fromFiles.includes(row.name) ? { isByFiles: true } : {}),
     })
   }
@@ -110,17 +111,43 @@ async function listOf($: EngineInterface, cwd: string, trunkRef: string, trunkSh
   return listed
 }
 
-/** Tag lines as `name<TAB>seconds`, newest first, read into names and times. */
-const releasesOf = (said: string, now: number): { name: string; at: number }[] =>
+/** Tag lines as `name<TAB>seconds<TAB>object`, newest first, read into names, times and the object each names. */
+const releasesOf = (said: string, now: number): { name: string; at: number; sha: string }[] =>
   said
     .split('\n')
     .map(line => line.trim().split('\t'))
-    .flatMap(([name, at]) => {
+    .flatMap(([name, at, sha]) => {
       if (name === undefined || name === '') return []
       const seconds = Number.parseInt(at ?? '', 10)
 
-      return [{ name, at: Number.isFinite(seconds) ? Math.min(now, seconds * 1000) : 0 }]
+      return [{ name, at: Number.isFinite(seconds) ? Math.min(now, seconds * 1000) : 0, sha: sha ?? '' }]
     })
+
+// Whether each lane's staging holds what is live, kept against the staging
+// commit and the live tag's object, so the two are compared only when one moves.
+let sames = new Map<string, { key: string; isSame: boolean }>()
+
+/**
+ * Whether staging holds exactly what the live tag does, in the files that
+ * lane owns: a staging branch often carries its own build and other lanes'
+ * files, which say nothing about this lane. A lane that names no files is
+ * compared whole. Undefined when git cannot say.
+ */
+async function sameOf($: EngineInterface, cwd: string, lane: string, stagingSha: string, tagSha: string, paths: readonly string[], kept: Map<string, { key: string; isSame: boolean }>): Promise<boolean | undefined> {
+  const key = `${stagingSha}:${tagSha}:${paths.join(',')}`
+  const before = sames.get(lane)
+  if (before !== undefined && before.key === key) {
+    kept.set(lane, before)
+
+    return before.isSame
+  }
+  const scope = paths.length === 0 ? [] : ['--', ...paths.map(glob => `:(glob)${glob}`)]
+  const isSame = await asks($, ['diff', '--quiet', '--no-ext-diff', stagingSha, tagSha, ...scope], cwd)
+  if (isSame === undefined) return undefined
+  kept.set(lane, { key, isSame })
+
+  return isSame
+}
 
 /**
  * Reads the lanes a project declares, taking either spelling: a `branch`
@@ -229,14 +256,16 @@ export type Placed = {
 export async function readLanes($: EngineInterface, cwd: string, trunkRef: string, specs: readonly TrackSpec[], branch: string, now: number): Promise<Placed> {
   if (specs.length === 0) return { lanes: [], loose: [] }
   // Names, commits and commit times in the one call, so listing a lane's branches newest first costs nothing more.
-  const rows = (await git($, ['for-each-ref', '--format=%(refname:short)%09%(objectname)%09%(committerdate:unix)', 'refs/heads'], cwd))
+  // The newest commit's subject rides along too, so a branch can say what it is for at no extra cost.
+  const rows = (await git($, ['for-each-ref', '--format=%(refname:short)%09%(objectname)%09%(committerdate:unix)%09%(contents:subject)', 'refs/heads'], cwd))
     .split('\n')
     .map(one => one.trim().split('\t'))
-    .flatMap(([name, sha, at]) => {
+    .flatMap(([name, sha, at, ...said]): Head[] => {
       if (name === undefined || name === '' || sha === undefined || sha === '') return []
       const seconds = Number.parseInt(at ?? '', 10)
+      const subject = said.join(' ').trim().slice(0, 72)
 
-      return [{ name, sha, updatedAt: Number.isFinite(seconds) ? Math.min(now, seconds * 1000) : 0 }]
+      return [{ name, sha, updatedAt: Number.isFinite(seconds) ? Math.min(now, seconds * 1000) : 0, ...(subject === '' ? {} : { subject }) }]
     })
   const heads = rows.map(row => row.name)
   const trunkName = trunkRef.replace(/^origin\//, '')
@@ -290,6 +319,7 @@ export async function readLanes($: EngineInterface, cwd: string, trunkRef: strin
   // Only the few branches shown under each lane are measured against the trunk.
   const shaOf = new Map(rows.map(row => [row.name, row]))
   const keptSpreads = new Map<string, { key: string; spread: Spread }>()
+  const keptSames = new Map<string, { key: string; isSame: boolean }>()
   const lanes: Lane[] = []
   for (let index = 0; index < specs.length; index += 1) {
     const spec = specs[index] as TrackSpec
@@ -307,9 +337,17 @@ export async function readLanes($: EngineInterface, cwd: string, trunkRef: strin
     const found = spec.stagingPath === undefined && spec.stagingBranch === undefined ? undefined : await stageOf($, cwd, trunkRef, spec, now)
     // The call that already named what is live now carries each tag's date too, so the release history costs nothing more.
     // Newest by version, not by date: a tag's date can be a backfill, and version order also ranks date-named tags. Each keeps its own date for display.
-    const tags = spec.tagPrefix === undefined ? '' : await git($, ['tag', '--sort=-v:refname', '--format=%(refname:strip=2)%09%(creatordate:unix)', '--list', `${spec.tagPrefix}*`], cwd)
-    const releases = releasesOf(tags, now).slice(0, MOST_LISTED)
-    const live = releases[0]?.name
+    const tags = spec.tagPrefix === undefined ? '' : await git($, ['tag', '--sort=-v:refname', '--format=%(refname:strip=2)%09%(creatordate:unix)%09%(objectname)', '--list', `${spec.tagPrefix}*`], cwd)
+    const tagged = releasesOf(tags, now).slice(0, MOST_LISTED)
+    const releases = tagged.map(one => ({ name: one.name, at: one.at }))
+    const live = tagged[0]?.name
+
+    // Staging may sit behind the trunk and still hold just what is live: say so, so "behind" is not read as live being out of date.
+    const liveSha = tagged[0]?.sha ?? ''
+    // A staging folder on the trunk with no files of its own named has nothing to compare but the whole trunk, which says nothing, so it is left unsaid.
+    const lanePaths = spec.paths ?? []
+    const isComparable = found !== undefined && liveSha !== '' && (spec.stagingBranch !== undefined || lanePaths.length > 0)
+    const isStagingLive = !isComparable ? undefined : await sameOf($, cwd, spec.id ?? spec.name, found.sha, liveSha, lanePaths, keptSames)
 
     // A lane whose checks have passed carries a tag on the very commit staging stands at.
     let isPassed: boolean | undefined
@@ -336,6 +374,7 @@ export async function readLanes($: EngineInterface, cwd: string, trunkRef: strin
       ...(found === undefined ? {} : { staging: found.stage }),
       ...(live === undefined || live === '' ? {} : { live }),
       ...(releases.length === 0 ? {} : { releases }),
+      ...(isStagingLive === undefined ? {} : { isStagingLive }),
       ...(isPassed === undefined ? {} : { isPassed }),
       ...(hasYours === undefined ? {} : { hasYours }),
     })
@@ -345,10 +384,12 @@ export async function readLanes($: EngineInterface, cwd: string, trunkRef: strin
   const guess = isNamed || branch === trunkName || here === undefined || here.kind === 'lane' ? undefined : here.kind
 
   // Open branches in no lane, by name or by files: those past the placing cap are among them, since nothing placed them.
-  const inLane = new Set([...named.flat(), ...placedIn.flat()])
+  // A lane's staging branch is a stage, not work in flight, so it is never loose either.
+  const inLane = new Set([...named.flat(), ...placedIn.flat(), ...specs.flatMap(spec => (spec.stagingBranch === undefined ? [] : [spec.stagingBranch]))])
   const strays = rows.filter(row => row.name !== trunkName && !inLane.has(row.name) && isOpen(row.name))
   const loose = await listOf($, cwd, trunkRef, trunkSha, strays, [], keptSpreads)
   spreads = keptSpreads
+  sames = keptSames
 
   // What could be cleaned up: merged into the trunk, and not the trunk itself or the branch checked out here.
   const unmerged = open
