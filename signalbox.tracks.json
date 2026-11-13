@@ -4,7 +4,7 @@
       "id": "board",
       "name": "Board",
       "branch": "board/",
-      "paths": ["hooks/draw.ts", "hooks/lanes.ts"]
+      "paths": ["hooks/draw.ts", "hooks/lanes.ts", "hooks/spine.ts"]
     },
     {
       "id": "data",

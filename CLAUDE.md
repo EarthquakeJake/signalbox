@@ -14,7 +14,7 @@ Track leads never push to `main`, never change the version in `.claude-plugin/pl
 
 | Track | Branch prefix | Owns |
 | --- | --- | --- |
-| Board | `board/` | `hooks/draw.ts`, `hooks/lanes.ts`: everything drawn |
+| Board | `board/` | `hooks/draw.ts`, `hooks/lanes.ts`, `hooks/spine.ts`: everything drawn |
 | Data | `data/` | `hooks/git.ts`, `hooks/tracks.ts`, `hooks/paths.ts`, `types/`: what is read from git and the track file |
 | Quality | `quality/` | tests, `tools/`: render harness and checks |
 | Release | `release/` | `hooks/register.tsx`, `hooks/hooks.json`, `.claude-plugin/`, `README.md`: wiring, manifest and docs |
