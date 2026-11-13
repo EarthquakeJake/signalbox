@@ -257,6 +257,8 @@ export type Placed = {
   clashes?: Clash[]
   /** The worst clash the branch you are on is part of. */
   clash?: Clash['level']
+  /** Your branch is named for one lane while its committed files clearly belong to another: both lane ids. */
+  mismatch?: { named: string; byFiles: string }
 }
 
 /**
@@ -377,6 +379,7 @@ export async function readLanes($: EngineInterface, cwd: string, trunkRef: strin
 
     lanes.push({
       ...(spec.id === undefined ? {} : { id: spec.id }),
+      ...((spec.paths ?? []).length === 0 ? {} : { paths: [...(spec.paths ?? [])] }),
       name: spec.name,
       branches: byName.length + extra,
       open: listed,
@@ -431,6 +434,20 @@ export async function readLanes($: EngineInterface, cwd: string, trunkRef: strin
     keptFiles,
     now,
   )
+  // A branch named for one lane whose committed files clearly belong to another: the project's own track
+  // checks fail such a branch, so it is worth saying early. Its files are the diff clashes already read.
+  let mismatch: { named: string; byFiles: string } | undefined
+  const namedAt = named.findIndex(mine => mine.includes(branch))
+  const mineRow = rows.find(row => row.name === branch)
+  if (namedAt >= 0 && mineRow !== undefined && trunkSha !== '' && isOpen(branch) && specs.some(spec => (spec.paths ?? []).length > 0)) {
+    const changed = (await filesOf($, cwd, trunkRef, trunkSha, mineRow.sha, keptFiles)) ?? []
+    const pick = pickLane(changed, specs.map(spec => spec.paths ?? []))
+    if (pick?.kind === 'lane' && pick.index !== namedAt) {
+      const was = specs[namedAt] as TrackSpec
+      const is = specs[pick.index] as TrackSpec
+      mismatch = { named: was.id ?? was.name, byFiles: is.id ?? is.name }
+    }
+  }
   keepFiles(keptFiles)
   for (const listed of [...lanes.flatMap(lane => lane.open ?? []), ...loose]) {
     const level = clashing.byBranch.get(listed.name)
@@ -445,5 +462,6 @@ export async function readLanes($: EngineInterface, cwd: string, trunkRef: strin
     loose,
     ...(clashing.clashes.length === 0 ? {} : { clashes: clashing.clashes }),
     ...(clash === undefined ? {} : { clash }),
+    ...(mismatch === undefined ? {} : { mismatch }),
   }
 }
