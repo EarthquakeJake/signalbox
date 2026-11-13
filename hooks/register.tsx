@@ -333,7 +333,7 @@ export const register: Register = (on, options) => {
     const running = [...state.rows].reverse().find(r => r.status === 'run')
     const alt = `${TITLE}. ${running !== undefined ? `${NAMES[running.station]}: ${running.label}` : state.isWorking ? 'Thinking' : 'Waiting for you'}`
 
-    const picture = state.view === 'spine' ? drawSpine(state, isWide, now) : drawBoard(state, isWide, names, now)
+    const picture = state.view === 'spine' ? drawSpine(state, isWide, now, names) : drawBoard(state, isWide, names, now)
     paneDrawnAt = now
 
     // Its own size set for the pane's height; the host fits the width. No width
