@@ -10,7 +10,7 @@
       "id": "data",
       "name": "Data",
       "branch": "data/",
-      "paths": ["hooks/git.ts", "hooks/tracks.ts", "hooks/paths.ts", "types/**"]
+      "paths": ["hooks/git.ts", "hooks/tracks.ts", "hooks/paths.ts", "hooks/clashes.ts", "types/**"]
     },
     {
       "id": "quality",
