@@ -27,6 +27,7 @@ registerHooks({
 
 const here = dirname(fileURLToPath(import.meta.url))
 const { drawBoard } = await import('../hooks/draw.ts')
+const { drawSpine } = await import('../hooks/spine.ts')
 const { FIXTURES } = await import('./fixtures.ts')
 const { layoutProblems } = await import('./layout.ts')
 
@@ -44,14 +45,22 @@ mkdirSync(join(out, 'svg'), { recursive: true })
 
 type Drawn = { id: string; title: string; shape: 'tall' | 'wide'; file: string; svg: string; w: number; h: number; problems: string[] }
 const drawn: Drawn[] = []
-for (const f of FIXTURES) {
-  if (only !== undefined && !only.includes(f.id)) continue
-  for (const shape of ['tall', 'wide'] as const) {
-    const svg = drawBoard(f.board, shape === 'wide', f.names, f.now)
-    const size = /viewBox="0 0 ([\d.]+) ([\d.]+)"/.exec(svg)
-    const file = `${f.id}_${shape}`
-    writeFileSync(join(out, 'svg', `${file}.svg`), svg)
-    drawn.push({ id: f.id, title: f.title, shape, file, svg, w: Number(size?.[1] ?? 440), h: Number(size?.[2] ?? 436), problems: layoutProblems(svg) })
+// Every fixture is drawn as the board and as the spine view; the spine's files start `spine-`.
+const views = [
+  { prefix: '', title: '', draw: (f: (typeof FIXTURES)[number], isWide: boolean) => drawBoard(f.board, isWide, f.names, f.now) },
+  { prefix: 'spine-', title: 'Spine: ', draw: (f: (typeof FIXTURES)[number], isWide: boolean) => drawSpine(f.board, isWide, f.now) },
+]
+for (const view of views) {
+  for (const f of FIXTURES) {
+    const id = `${view.prefix}${f.id}`
+    if (only !== undefined && !only.includes(id) && !only.includes(f.id)) continue
+    for (const shape of ['tall', 'wide'] as const) {
+      const svg = view.draw(f, shape === 'wide')
+      const size = /viewBox="0 0 ([\d.]+) ([\d.]+)"/.exec(svg)
+      const file = `${id}_${shape}`
+      writeFileSync(join(out, 'svg', `${file}.svg`), svg)
+      drawn.push({ id, title: `${view.title}${f.title}`, shape, file, svg, w: Number(size?.[1] ?? 440), h: Number(size?.[2] ?? 436), problems: layoutProblems(svg) })
+    }
   }
 }
 

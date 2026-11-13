@@ -146,7 +146,59 @@ export const FIXTURES: Fixture[] = [
       ],
     }),
   }),
-  make('lane-cards-full', 'Lane cards, four lanes of four branches, none yours', {
+  make('spine-silkscreen', 'Spine: Silkscreen with releases and branches in no lane', {
+    ...busy,
+    repo: repoOf({
+      branch: 'claude/upbeat-volhard-48eb37',
+      behind: 91,
+      merged: 4,
+      loose: [
+        { name: 'review/plan-notes', ahead: 3, behind: 26, updatedAt: NOW - 5 * H },
+        { name: 'claude/wonderful-mcclintock-4a2b', ahead: 1, behind: 4, updatedAt: NOW - 30 * 24 * H },
+      ],
+      lanes: [
+        {
+          id: 'app', name: 'App', branches: 0, isHere: false, open: [], live: 'app-v3.14.0', isPassed: true,
+          staging: { updatedAt: NOW - 2 * H, subject: 'UAT', behind: 0 },
+          releases: [
+            { name: 'app-v3.14.0', at: NOW - 6 * H },
+            { name: 'app-v3.12.0', at: NOW - 26 * H },
+            { name: 'app-v3.11.1', at: NOW - 3 * 24 * H },
+            { name: 'app-v3.11.0', at: NOW - 6 * 24 * H },
+          ],
+        },
+        {
+          id: 'website', name: 'Website', branches: 1, isHere: true, isGuessed: true, byFiles: 1, live: 'site-2026-11-13', hasYours: false,
+          staging: { updatedAt: NOW - 2 * H, subject: 'UAT', behind: 12 },
+          open: [{ name: 'claude/upbeat-volhard-48eb37', ahead: 2, behind: 91, updatedAt: NOW - H, isByFiles: true }],
+          releases: [{ name: 'site-2026-11-13', at: NOW - 7 * H }, { name: 'site-2026-11-10', at: NOW - 3 * 24 * H }],
+        },
+        { id: 'platform', name: 'Platform', branches: 1, isHere: false, open: [{ name: 'platform/branch-prefix', ahead: 1, behind: 0, updatedAt: NOW - 26 * H }] },
+        { id: 'cloud', name: 'Cloud trial', branches: 1, isHere: false, isParked: true, open: [{ name: 'codex/private-alpha', ahead: 17, behind: 111, updatedAt: NOW - 20 * 24 * H, isByFiles: true }] },
+      ],
+    }),
+  }),
+  make('spine-crowded', 'Spine: many open branches, none yours, one far past the scale', {
+    ...calm,
+    repo: repoOf({
+      branch: 'claude/vigorous-khayyam-da3b47',
+      behind: 3,
+      guess: 'none',
+      merged: 21,
+      loose: [
+        { name: 'claude/MMMWWWMMMWWWMMMWWWMMMWWW', ahead: 140, behind: 4000, updatedAt: NOW - 90 * 24 * H },
+        { name: 'fix', ahead: 1, behind: 1, updatedAt: NOW - 60000 },
+      ],
+      lanes: ['App', 'Website', 'Platform'].map((name, at) => ({
+        id: name.toLowerCase(),
+        name,
+        branches: 4,
+        isHere: false,
+        open: [0, 1, 2, 3].map(k => ({ name: `${name.toLowerCase()}/branch-${k}-${'x'.repeat(k * 6)}`, ahead: k + 1, behind: [2, 9, 40, 180][k]! + at * 3, updatedAt: NOW - (k * 9 + at) * 24 * H })),
+      })),
+    }),
+  }),
+  make('lane-cards-full','Lane cards, four lanes of four branches, none yours', {
     ...calm,
     repo: repoOf({
       branch: 'claude/vigorous-khayyam-da3b47',

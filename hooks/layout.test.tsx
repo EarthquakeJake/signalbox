@@ -3,6 +3,7 @@ import { expect, test } from 'claude-code/testing'
 import { FIXTURES } from '../tools/fixtures'
 import { layoutProblems } from '../tools/layout'
 import { drawBoard } from './draw'
+import { drawSpine } from './spine'
 
 // Faults the drawing is known to have, seen in the render harness's pictures
 // and left to the Board track. They do not fail the tests; anything new does.
@@ -16,6 +17,11 @@ for (const f of FIXTURES) {
     test(`layout: ${f.title}, ${isWide ? 'wide' : 'tall'}: no text overlaps, crosses a wire or leaves the board`, () => {
       const found = layoutProblems(drawBoard(f.board, isWide, f.names, f.now))
       const known = KNOWN[name] ?? []
+      expect(found.filter(p => !known.includes(p))).toEqual([])
+    })
+    test(`layout: spine, ${f.title}, ${isWide ? 'wide' : 'tall'}: no text overlaps, crosses a wire or leaves the board`, () => {
+      const found = layoutProblems(drawSpine(f.board, isWide, f.now))
+      const known = KNOWN[`spine-${name}`] ?? []
       expect(found.filter(p => !known.includes(p))).toEqual([])
     })
   }
