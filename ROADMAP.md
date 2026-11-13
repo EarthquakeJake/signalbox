@@ -14,7 +14,6 @@ The design reference is the **Refined board** page of the Release map canvas: ht
 
 ## Next
 
-- **Known drawing faults** (listed in `hooks/layout.test.tsx`): in the wide layout with no lanes, the staging words run into the live tag; on the tall board, a chip reading `99+` runs into its name. Board.
 - **Edge states to the refined design** (spec section 10): reading, no repository, git blocked, no lane in files. Board.
 - **The width table.** Measure Inter and JetBrains Mono now that they are installed, and fit text by measured widths. Board, with Quality.
 
@@ -26,6 +25,7 @@ The design reference is the **Refined board** page of the Release map canvas: ht
 
 ## Done
 
+- 0.10.0: option 2's lane cards. A colour and icon per lane, its status, live tag as a pill, staging, and its open branches listed with behind and stale pills; the merged count at the foot. Wide lanes carry the same, on one line each. All known drawing faults fixed.
 - 0.9.0: the wide release section. Lanes in the right column, the feed drawn inside the wide board, and each lane's open branches and the merged count read from git (not drawn yet).
 - 0.8.0: the tall release section. Your lane as three large stops, the other lanes as rows under a hairline, text widths measured, and an in-repo render harness with a layout check.
 - 0.7.0: the refined finish (fonts, colours, lines, Claude's box, tag wording) and merged branches left out of lane counts.
