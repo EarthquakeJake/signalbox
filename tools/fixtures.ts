@@ -178,7 +178,53 @@ export const FIXTURES: Fixture[] = [
       ],
     }),
   }),
-  make('spine-crowded', 'Spine: many open branches, none yours, one far past the scale', {
+  make('spine-silkscreen-today', 'Spine: Silkscreen as git read it on 13 Nov', {
+    ...busy,
+    repo: repoOf({
+      branch: 'claude/upbeat-volhard-48eb37',
+      behind: 91,
+      merged: 4,
+      loose: [{ name: 'claude/vigorous-khayyam-da3b47', ahead: 4, behind: 91, updatedAt: NOW - 26 * H }],
+      lanes: [
+        { id: 'app', name: 'App', branches: 0, isHere: false, open: [], live: 'app-v3.14.0', releases: [{ name: 'app-v3.14.0', at: NOW - 4.5 * H }] },
+        {
+          id: 'website', name: 'Website', branches: 1, isHere: true, isGuessed: true, byFiles: 1, live: 'site-2026-11-13',
+          open: [{ name: 'claude/upbeat-volhard-48eb37', ahead: 2, behind: 91, updatedAt: NOW - H, isByFiles: true }],
+          releases: [{ name: 'site-2026-11-13', at: NOW - 4.5 * H }],
+        },
+        { id: 'platform', name: 'Platform', branches: 1, isHere: false, open: [{ name: 'platform/branch-prefix', ahead: 1, behind: 0, updatedAt: NOW - 26 * H }] },
+        { id: 'cloud', name: 'Cloud trial', branches: 1, isHere: false, isParked: true, open: [{ name: 'codex/private-alpha', ahead: 17, behind: 111, updatedAt: NOW - 20 * 24 * H, isByFiles: true }] },
+      ],
+    }),
+  }),
+  make('spine-signalbox', 'Spine: this repository, four tracks and the Release lane\'s versions', {
+    ...busy,
+    repo: repoOf({
+      branch: 'board/spine',
+      behind: 3,
+      dirty: 0,
+      unpushed: undefined,
+      merged: 9,
+      lanes: [
+        {
+          id: 'board', name: 'Board', branches: 2, isHere: true,
+          open: [{ name: 'board/spine', ahead: 2, behind: 3, updatedAt: NOW - 10 * 60000 }, { name: 'board/release-3', ahead: 0, behind: 14, updatedAt: NOW - 90 * 60000 }],
+        },
+        { id: 'data', name: 'Data', branches: 1, isHere: false, open: [{ name: 'data/lane-branches', ahead: 0, behind: 9, updatedAt: NOW - 2 * H }] },
+        { id: 'quality', name: 'Quality', branches: 0, isHere: false, open: [] },
+        {
+          id: 'release', name: 'Release', branches: 0, isHere: false, open: [], live: 'v0.10.0',
+          releases: [
+            { name: 'v0.10.0', at: NOW - 24 * 60000 },
+            { name: 'v0.9.0', at: NOW - 31 * 60000 },
+            { name: 'v0.8.0', at: NOW - 33 * 60000 },
+            { name: 'v0.7.0', at: NOW - 56 * 60000 },
+          ],
+        },
+      ],
+    }),
+  }),
+  make('spine-crowded','Spine: many open branches, none yours, one far past the scale', {
     ...calm,
     repo: repoOf({
       branch: 'claude/vigorous-khayyam-da3b47',
