@@ -243,7 +243,12 @@ export function drawBoard(b: Board, isWide: boolean, names: TrackNames, now: num
   }
   if (lanes.length > 0) {
     track =
-      wire(isWide ? `M630 145H${shape.bus}` : `M220 310V324Q220 332 212 332H${shape.bus + 8}Q${shape.bus} 332 ${shape.bus} 340`, flow) +
+      wire(
+        isWide
+          ? `M630 145H632Q640 145 640 137V${shape.top + 8}Q640 ${shape.top} 648 ${shape.top}H${shape.bus}`
+          : `M220 310V324Q220 332 212 332H${shape.bus + 8}Q${shape.bus} 332 ${shape.bus} 340`,
+        flow,
+      ) +
       drawLanes(lanes, shape, now, C, SANS, MONO)
   }
   const capX = lanes.length > 0 ? shape.right : L.caption.x

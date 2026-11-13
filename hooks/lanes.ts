@@ -23,7 +23,7 @@ type Shape = {
 }
 
 export const TALL_LANES: Shape = { left: 16, right: 424, bus: 96, stage: 170, row: 32, top: 340, liveChars: 18, stageChars: 18, nameChars: 11, isOneLine: true }
-export const WIDE_LANES: Shape = { left: 656, right: 884, bus: 672, stage: 764, row: 44, top: 48, liveChars: 14, stageChars: 17 }
+export const WIDE_LANES: Shape = { left: 656, right: 884, bus: 672, stage: 746, row: 44, top: 48, liveChars: 15, stageChars: 20 }
 
 /** How long ago, in the fewest characters that still say it. */
 export const agoOf = (then: number, now: number): string => {
