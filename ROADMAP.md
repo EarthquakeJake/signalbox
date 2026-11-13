@@ -6,8 +6,6 @@ The design reference is the **Refined board** page of the Release map canvas: ht
 
 | Track | Work | Branch |
 | --- | --- | --- |
-| Design | Spine options on the canvas (2–3, from real Silkscreen data): calmer and more colourful, more room for the Claude ring, a minimal legend, no scale sentence. Jake picks one. | canvas |
-| Board | The spine option Jake picks; also your own branch's description in the lit lane, not its made-up name. | `board/spine-2` |
 
 ## Next
 
@@ -29,6 +27,7 @@ The design reference is the **Refined board** page of the Release map canvas: ht
 
 ## Done
 
+- 0.15.0: the spine redesigned as Jake picked from "Spine, round 2": a lane tree ordered closest to main first when tall, a tree when wide, Claude given room, no legend; your own branch described rather than named.
 - 0.14.2: an 8 px frame round every drawing instead of 16, and the wide views at one steady height.
 - 0.14.1: the pane fills its width as lot-map does (the host fits it), the height follows the rows, the tall board keeps room for the feed, and the redraw ticks every second.
 - 0.14.0: both views sized to fit the pane (never ballooning, never cut off at the bottom), and a redraw every 2 seconds while the pane is open, so a height-only resize is caught.

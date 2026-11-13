@@ -56,7 +56,7 @@ Start a new session afterwards. The pane opens by itself; `/signalbox` opens it 
 ## Two views
 
 - **The board** (`/signalbox board`, the default): Claude, its tools, and the lanes.
-- **The spine** (`/signalbox spine`): the trunk drawn as a spine, newest at the top, with each open branch joined to it where it forked, far-behind branches dashed in red, your branch and your lane's staging beside it, and the releases below.
+- **The spine** (`/signalbox spine`): Claude at the top, then where you are, then `main` with each lane joined to it, the lane closest to `main` first, its live release, its staging and when it last moved, and its open branches under it, described by their newest commit. Parked lanes and branches in no lane come last. In a wide pane `main` runs along the top and the lanes hang down from it as columns.
 
 ## Settings
 
@@ -130,7 +130,7 @@ It makes no network requests of its own, and calls no model. It never changes or
 
 ## Status
 
-Version 0.14.2, an early release. Both layouts have been rendered and looked at, with lanes and without. Built and tried on Claude Code 2.1.321 in the desktop app on Windows. Other surfaces are covered by the mod's tests but have not been tried by hand. The test engine serves no processes, so the git reading is covered by its failing case alone and was checked by hand in a real repository.
+Version 0.15.0, an early release. Both layouts have been rendered and looked at, with lanes and without. Built and tried on Claude Code 2.1.321 in the desktop app on Windows. Other surfaces are covered by the mod's tests but have not been tried by hand. The test engine serves no processes, so the git reading is covered by its failing case alone and was checked by hand in a real repository.
 
 ## Development
 
