@@ -16,9 +16,13 @@ type Shape = {
   /** How many characters the two texts hold. */
   liveChars: number
   stageChars: number
+  /** How many characters the lane's name holds when it shares the row. */
+  nameChars?: number
+  /** True where the row is one line: name, pads and tag together. */
+  isOneLine?: boolean
 }
 
-export const TALL_LANES: Shape = { left: 16, right: 424, bus: 96, stage: 208, row: 40, top: 340, liveChars: 20, stageChars: 28 }
+export const TALL_LANES: Shape = { left: 16, right: 424, bus: 96, stage: 170, row: 32, top: 340, liveChars: 18, stageChars: 18, nameChars: 11, isOneLine: true }
 export const WIDE_LANES: Shape = { left: 656, right: 884, bus: 672, stage: 764, row: 44, top: 48, liveChars: 14, stageChars: 17 }
 
 /** How long ago, in the fewest characters that still say it. */
@@ -63,15 +67,22 @@ export function drawLanes(lanes: readonly Lane[], shape: Shape, now: number, col
     const stageInk = lane.staging === undefined ? C.nodeLine : stale ? C.hl : lane.isPassed === true ? C.accent : C.wire
     const faded = lane.isParked === true ? ' opacity="0.45"' : ''
 
+    // On one line the name sits left of the junction and the wire starts past
+    // the branch count, so no text is crossed by it.
+    const isOne = shape.isOneLine === true
+    const nameY = isOne ? padLine + 4 : topLine
+    const tagY = isOne ? padLine + 4 : topLine
+    const wireFrom = isOne ? shape.bus + 32 : shape.bus + 7
+
     out += `<g${faded}>`
     out +=
-      `<text x="${shape.left}" y="${topLine}" ${sans} font-size="11" font-weight="600" fill="${isLit ? C.hl : C.text}">${esc(cut(lane.name, 16))}</text>` +
+      `<text x="${shape.left}" y="${nameY}" ${sans} font-size="11" font-weight="600" fill="${isLit ? C.hl : C.text}">${esc(cut(lane.name, shape.nameChars ?? 16))}</text>` +
       (lane.live === undefined
         ? ''
-        : `<text x="${shape.right}" y="${topLine}" text-anchor="end" ${mono} font-size="11" fill="${C.muted}">${esc(cut(lane.live, shape.liveChars))}</text>`) +
-      `<path d="M${shape.bus + 7} ${padLine}H${shape.stage - 7}" fill="none" stroke="${C.wire}" stroke-width="1.5"/>` +
+        : `<text x="${shape.right}" y="${tagY}" text-anchor="end" ${mono} font-size="11" fill="${C.muted}">${esc(cut(lane.live, shape.liveChars))}</text>`) +
+      `<path d="M${wireFrom} ${padLine}H${shape.stage - 7}" fill="none" stroke="${C.wire}" stroke-width="1.5"/>` +
       `<circle cx="${shape.bus}" cy="${padLine}" r="7" fill="${C.canvas}" stroke="${isLit ? C.accent : C.wire}" stroke-width="${isLit ? 2 : 1.5}"/>` +
-      `<text x="${shape.bus + 14}" y="${padLine + 4}" ${mono} font-size="11" fill="${isLit ? C.accent : C.muted}">${lane.branches}</text>` +
+      `<text x="${shape.bus + 13}" y="${padLine + 4}" ${mono} font-size="11" fill="${isLit ? C.accent : C.muted}">${lane.branches}</text>` +
       `<circle cx="${shape.stage}" cy="${padLine}" r="7" fill="${C.canvas}" stroke="${stageInk}" stroke-width="1.5"${lane.staging === undefined ? ' stroke-dasharray="3 3"' : ''}/>` +
       `<text x="${shape.stage + 14}" y="${padLine + 4}" ${sans} font-size="11" fill="${C.muted}">${esc(
         cut(

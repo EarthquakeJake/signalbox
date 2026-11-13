@@ -261,7 +261,7 @@ export function drawBoard(b: Board, isWide: boolean, names: TrackNames, now: num
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${L.w} ${H}" width="${L.w}" height="${H}">` +
     `<rect width="${L.w}" height="${H}" rx="12" fill="${C.canvas}"/>` +
-    head + wires + wire(L.merge, flow) + wire(L.route, flow) + core + chips + pins + tag + track +
+    head + wires + wire(L.merge, flow) + (lanes.length > 0 ? '' : wire(L.route, flow)) + core + chips + pins + tag + track +
     `</svg>`
   )
 }

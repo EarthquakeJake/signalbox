@@ -19,7 +19,7 @@ Signalbox is a mod for Claude Code (a plugin that adds a pane). It runs locally.
 
   A stop lights up when there is work of yours sitting at it.
 
-- **Or one lane per deployable part**, where the project declares them in a track file. Each lane is a row: its name and what is live on it, then its open branches and its staging, all hung off one bus. The lane you are working in is the lit one, and where a lane's staging is a branch, it says whether the branch you are on has reached it yet.
+- **Or one lane per deployable part**, where the project declares them in a track file. Each lane is one row: its name, its open branches, its staging and what is live on it, all hung off one bus. The lane you are working in is the lit one, and where a lane's staging is a branch, it says whether the branch you are on has reached it yet.
 - **A short feed.** The last four actions, under the board.
 
 ## Two layouts, chosen for you
@@ -122,7 +122,7 @@ It makes no network requests of its own, and calls no model. It never changes or
 
 ## Status
 
-Version 0.5.3, an early release. Built and tried on Claude Code 2.1.321 in the desktop app on Windows. Other surfaces are covered by the mod's tests but have not been tried by hand. The test engine serves no processes, so the git reading is covered by its failing case alone and was checked by hand in a real repository.
+Version 0.5.4, an early release. Built and tried on Claude Code 2.1.321 in the desktop app on Windows. Other surfaces are covered by the mod's tests but have not been tried by hand. The test engine serves no processes, so the git reading is covered by its failing case alone and was checked by hand in a real repository.
 
 ## Development
 
