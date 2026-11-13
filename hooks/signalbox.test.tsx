@@ -42,7 +42,7 @@ test('a shell call shows in the feed and the board is drawn', async ($, on) => {
 
 test('a tall pane gets the tall board and a short wide pane the wide one', async $ => {
   const tall = await $.ui.mount(pane(60, 60))
-  expect(JSON.stringify(await ui_svg(tall))).toContain('0 0 440 436')
+  expect(JSON.stringify(await ui_svg(tall))).toContain('0 0 440 420')
   await tall.unmount()
 
   const wide = await $.ui.mount(pane(120, 20))
@@ -109,7 +109,7 @@ test('declared lanes are drawn in place of the single track', async ($, on) => {
   expect(svg).toContain('site-2026-11-13')
   expect(svg).toContain('not yet')
   expect(svg).toContain('parked')
-  expect(svg).toContain('3 tracks')
+  expect(svg).toContain('you are here')
   expect(svg).toContain('site/landing')
   await ui.unmount()
 })
@@ -145,6 +145,6 @@ test('a branch goes to the lane owning most of its files, and a tie names no lan
 })
 
 test('a branch name is cut by its width, so wide letters stop short of the wire', () => {
-  expect(fit('claude/awesome-wozniak-mw3m9b7', 190)).toBe('claude/awesome-wozniak-mw3m9b7')
+  expect(fit('claude/awesome-wozniak-mw3m9b7', 200)).toBe('claude/awesome-wozniak-mw3m9b7')
   expect(fit('claude/MMMMWWWWMMMMWWWWMMMMWWWW', 190).length).toBeLessThan(24)
 })

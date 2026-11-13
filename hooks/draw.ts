@@ -1,16 +1,7 @@
-import type { Board, StationId } from '../types'
-import { TALL_LANES, WIDE_LANES, agoOf, drawLanes, laneHeight } from './lanes'
+import type { Board, Lane, StationId } from '../types'
+import { C, WIDE_LANES, agoOf, branchIn, drawLanes, esc, fit, fitMono, laneRow, stagingWords, text, widthOf } from './lanes'
 
-// A dark circuit-board look in the Ink tokens. Silk marks what is running now;
-// copper marks connection points and where you are.
-const C = {
-  canvas: '#081013', node: '#0F191D', nodeLine: '#22323A', line: '#1A272D', dot: '#16232A',
-  wire: '#3E525A', text: '#EAF0EE', muted: '#8A9B98', faint: '#55656A',
-  accent: '#F1EDE3', ring: 'rgba(241,237,227,0.12)', port: '#C98B5E', hl: '#D4976A',
-}
-// Inter and JetBrains Mono where the host has them, the system's own faces where it does not.
-const SANS = `font-family="Inter, 'Segoe UI', system-ui, sans-serif"`
-const MONO = `font-family="'JetBrains Mono', Consolas, ui-monospace, monospace"`
+export { fit }
 
 export const NAMES: Record<StationId, string> = {
   you: 'You', skills: 'Skills', hooks: 'Hooks', memory: 'Memory', model: 'Model',
@@ -40,14 +31,10 @@ type Layout = {
   merge: string
   tag: { x: number; y: number; w: number }
   route: string
-  nodes: [number, number, number]
-  cy: number
-  labelY: number
-  caption: { x: number; y: number }
 }
 
 const TALL: Layout = {
-  w: 440, h: 436, core: { x: 150, y: 44 },
+  w: 440, h: 420, core: { x: 150, y: 44 },
   spots: {
     you: { x: 16, y: 52, w: 110, wire: 'M126 66H150', pin: [150, 66] },
     skills: { x: 16, y: 88, w: 110, wire: 'M126 102H150', pin: [150, 102] },
@@ -63,7 +50,6 @@ const TALL: Layout = {
   merge: 'M178 250V260Q178 270 188 270H252Q262 270 262 260V250M220 270V284',
   tag: { x: 110, y: 284, w: 220 },
   route: 'M220 310V320Q220 330 210 330H40Q30 330 30 340V354',
-  nodes: [30, 220, 410], cy: 368, labelY: 400, caption: { x: 56, y: 350 },
 }
 
 const WIDE: Layout = {
@@ -83,27 +69,9 @@ const WIDE: Layout = {
   merge: 'M398 110H410Q420 110 420 120V170Q420 180 410 180H398M420 145H440',
   tag: { x: 440, y: 132, w: 190 },
   route: 'M630 145H660',
-  nodes: [674, 770, 866], cy: 145, labelY: 180, caption: { x: 660, y: 110 },
 }
 
-const esc = (text: string): string => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
-
-/** Rough widths of 11px sans letters, enough to keep a name clear of a wire. */
-const widthOf = (letter: string): number =>
-  /[MW@%]/.test(letter) ? 10 : /[mw]/.test(letter) ? 8.6 : /[A-Z0-9#&]/.test(letter) ? 7.6 : /[iljtfr.,:;'|!\/ ()\[\]-]/.test(letter) ? 3.8 : 5.8
-
-/** Text cut to a width in pixels rather than a count of letters, so wide letters cannot run long. */
-export const fit = (text: string, most: number): string => {
-  let used = 0
-  for (let at = 0; at < text.length; at += 1) {
-    used += widthOf(text[at] as string)
-    if (used > most) return `${text.slice(0, Math.max(1, at - 1))}…`
-  }
-
-  return text
-}
-
-export const short = (text: string, most: number): string => (text.length <= most ? text : `${text.slice(0, most - 1)}…`)
+export const short = (words: string, most: number): string => (words.length <= most ? words : `${words.slice(0, most - 1)}…`)
 
 /** `claude-fable-5-2` reads as `fable 5.2`. */
 export const shortModel = (model: string): string => {
@@ -128,93 +96,165 @@ function wire(d: string, wear: Wear): string {
 
 export type TrackNames = { staging: string; live: string }
 
-export function drawBoard(b: Board, isWide: boolean, names: TrackNames, now: number): string {
-  const L = isWide ? WIDE : TALL
-  const wearOf = (id: StationId): Wear => ((b.live[id] ?? 0) > 0 ? 'live' : 'idle')
-  const ids = Object.keys(L.spots) as StationId[]
-  let wires = ''
-  let chips = ''
-  let pins = ''
+type Here = Extract<NonNullable<Board['repo']>, { kind: 'repo' }>
 
-  for (const id of ids) {
-    const s = L.spots[id]
-    const wear = wearOf(id)
-    const isLive = wear === 'live'
-    const line = isLive ? C.accent : C.nodeLine
-    const ink = isLive ? C.accent : C.muted
-    const count = b.counts[id] ?? 0
-    wires += wire(s.wire, wear)
-    chips +=
-      `<rect x="${s.x + 0.5}" y="${s.y + 0.5}" width="${s.w - 1}" height="27" rx="7.5" fill="${C.node}" stroke="${line}"/>` +
-      `<g transform="translate(${s.x + 8} ${s.y + 7}) scale(0.5833)" fill="none" stroke="${ink}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${ICONS[id]}</g>` +
-      `<text x="${s.x + 28}" y="${s.y + 18}" ${SANS} font-size="11" fill="${isLive ? C.accent : id === 'you' ? C.text : C.muted}">${NAMES[id]}</text>` +
-      (count > 0 ? `<text x="${s.x + s.w - 8}" y="${s.y + 18}" text-anchor="end" ${MONO} font-size="11" fill="${ink}">${count > 99 ? '99+' : count}</text>` : '')
-    pins += `<circle cx="${s.pin[0]}" cy="${s.pin[1]}" r="3.5" fill="${C.canvas}" stroke="${isLive ? C.accent : C.port}" stroke-width="1.5"/>`
+const plural = (n: number, one: string, many = `${one}s`): string => `${n} ${n === 1 ? one : many}`
+
+/** The words that say how your branch's lane was found, where it was not by name. */
+const markerOf = (here: Here | undefined, lanes: readonly Lane[]): string =>
+  lanes.some(lane => lane.isGuessed === true)
+    ? 'lane from files'
+    : here?.guess === 'tied'
+      ? 'lanes tied in files'
+      : here?.guess === 'none'
+        ? 'no lane in files'
+        : ''
+
+/**
+ * The tall board's release section: your lane, or your branch alone, as three
+ * large stops (branch, staging, live) with a caption above and labels under
+ * them; then every other lane as a quiet row under a hairline. Returns the
+ * drawing and the board's height, which grows with the rows.
+ */
+function tallRelease(b: Board, names: TrackNames, now: number, flow: Wear): { svg: string; h: number } {
+  const repo = b.repo
+  const here = repo !== undefined && repo.kind === 'repo' ? repo : undefined
+  const unknown = here === undefined
+  const lanes = here?.lanes ?? []
+  // Your lane, even a parked one: the board must not say you are in no lane when you are.
+  const lit = lanes.find(lane => lane.isHere)
+  const marker = markerOf(here, lanes)
+  const ahead = here?.ahead ?? 0
+  const dirty = here?.dirty ?? 0
+  const isBranchLit = here !== undefined && (ahead > 0 || dirty > 0)
+
+  type StageState = 'none' | 'plain' | 'yours' | 'behind' | 'passed'
+  let caption = ''
+  let stageLabel = ''
+  let stageState: StageState = 'none'
+  let stageCount = 0
+  let liveLabel = ''
+  let hasLive = false
+  let branchLabel = ''
+
+  if (here === undefined) {
+    const said =
+      repo === undefined
+        ? 'Reading the repository…'
+        : repo.kind === 'blocked'
+          ? `Git did not run: ${repo.why}`
+          : repo.why === undefined
+            ? 'No git repository in this folder'
+            : `Git said: ${repo.why}`
+    caption = esc(fit(said, 368))
+    branchLabel = repo !== undefined && repo.kind === 'blocked' && repo.branch !== undefined ? repo.branch : ''
+  } else if (lanes.length > 0) {
+    branchLabel = here.branch
+    if (lit !== undefined) {
+      // The lane's name in its own type, then where you are, giving way to the marker on the right.
+      const room = 368 - (marker === '' ? 0 : widthOf(marker) + 16)
+      const name = fit(lit.name, Math.min(160, room / 2), 13, 600)
+      const tail = ` · you are here · ${plural(lit.branches, 'branch', 'branches')}`
+      caption = `<tspan font-size="13" font-weight="600" fill="${C.hl}">${esc(name)}</tspan>${esc(fit(tail, room - widthOf(name, 13, 600)))}`
+      const words = stagingWords(lit, now)
+      stageLabel =
+        lit.isParked === true ? 'parked' : lit.staging === undefined ? 'no staging' : words.news === '' ? `${names.staging} · ${words.when}` : `${words.when} · ${words.news}`
+      stageState =
+        lit.staging === undefined || lit.isParked === true
+          ? 'none'
+          : words.news.endsWith('behind') ? 'behind' : words.news === 'passed' ? 'passed' : words.news === 'yours' ? 'yours' : 'plain'
+      stageCount = lit.staging?.behind ?? 0
+      hasLive = lit.live !== undefined
+      liveLabel = lit.live ?? names.live
+    } else {
+      caption = 'Your branch is in no lane'
+      stageLabel = 'no lane'
+    }
+  } else {
+    // No lanes declared: staging where a folder stands for it, else the trunk, measured from git.
+    branchLabel = here.branch
+    caption = here.staging === undefined ? 'Release track' : esc(fit(here.staging.subject, 368 - (marker === '' ? 0 : widthOf(marker) + 16)))
+    if (here.staging !== undefined) {
+      stageState = here.staging.behind > 0 ? 'behind' : 'plain'
+      stageCount = here.staging.behind
+      stageLabel = here.staging.behind > 0 ? `${agoOf(here.staging.updatedAt, now)} · ${here.staging.behind} behind` : `${names.staging} · ${agoOf(here.staging.updatedAt, now)}`
+    } else if (here.trunk !== undefined) {
+      const trunk = here.trunk.replace(/^origin\//, '')
+      stageState = here.behind > 0 ? 'behind' : 'plain'
+      stageCount = here.behind
+      stageLabel = here.behind > 0 ? `${trunk} · ${here.behind} behind` : `${trunk} · level`
+    } else {
+      stageLabel = 'on the trunk'
+    }
+    hasLive = here.tag !== undefined
+    liveLabel = here.tag ?? names.live
   }
 
-  // The newest call still running names what Claude is doing.
-  const running = [...b.rows].reverse().find(r => r.status === 'run')
-  // The lit station already says which tool, so the box names the action alone.
-  const doing = running !== undefined ? running.label : b.isWorking ? 'Thinking' : 'Waiting for you'
-  const cx = L.core.x + 70
-  const lift = b.context === undefined ? 10 : 0
-  const core =
-    (b.isWorking ? `<rect x="${L.core.x - 2}" y="${L.core.y - 2}" width="144" height="154" rx="12" fill="none" stroke="${C.ring}" stroke-width="4"/>` : '') +
-    `<rect x="${L.core.x + 0.5}" y="${L.core.y + 0.5}" width="139" height="149" rx="9.5" fill="${C.node}" stroke="${b.isWorking ? C.accent : C.nodeLine}"/>` +
-    `<text x="${cx}" y="${L.core.y + 47 + lift}" text-anchor="middle" ${MONO} font-size="15" font-weight="500" letter-spacing="2" fill="${C.text}">CLAUDE</text>` +
-    `<text x="${cx}" y="${L.core.y + 68 + lift}" text-anchor="middle" ${MONO} font-size="11" fill="${C.muted}">${esc(b.model === undefined ? '' : shortModel(b.model))}</text>` +
-    `<text x="${cx}" y="${L.core.y + 90 + lift}" text-anchor="middle" ${SANS} font-size="11" fill="${C.text}">${esc(fit(doing, 124))}</text>` +
-    (b.context === undefined ? '' : `<text x="${cx}" y="${L.core.y + 110}" text-anchor="middle" ${MONO} font-size="11" fill="${C.muted}">context ${Math.round(b.context)}%</text>`)
+  const cy = 368
+  const dash = ' stroke-dasharray="3 3"'
+  let out = wire(TALL.route, flow) + text(56, 352, caption)
+  if (marker !== '' && !unknown) out += text(424, 352, esc(marker), { anchor: 'end' })
 
-  // Files and Shell are the two stations that change the repository: their wires merge and run on to the branch.
+  // The joins, then the three stops over them.
+  out += `<path d="M44 ${cy}H206" fill="none" stroke="${isBranchLit ? C.accent : C.wire}" stroke-width="${isBranchLit ? 1.75 : 1.5}"/>`
+  out += `<path d="M234 ${cy}H396" fill="none" stroke="${C.wire}" stroke-width="1.5"/>`
+  if (isBranchLit) out += `<circle cx="30" cy="${cy}" r="16" fill="none" stroke="${C.ring}" stroke-width="4"/>`
+  out += `<circle cx="30" cy="${cy}" r="13" fill="${C.canvas}" stroke="${unknown ? C.faint : isBranchLit ? C.accent : C.wire}" stroke-width="${isBranchLit ? 2 : 1.5}"${unknown ? dash : ''}/>`
+  if (ahead > 0) out += text(30, cy + 4, `+${ahead > 99 ? 99 : ahead}`, { font: 'mono', anchor: 'middle', fill: C.text })
+  if (here?.unpushed !== undefined && here.unpushed > 0) out += `<circle cx="40" cy="${cy - 10}" r="3.5" fill="${C.port}"/>`
+
+  const stageStroke = stageState === 'none' ? C.faint : stageState === 'behind' ? C.hl : stageState === 'plain' ? C.wire : C.accent
+  out += `<circle cx="220" cy="${cy}" r="13" fill="${C.canvas}" stroke="${stageStroke}" stroke-width="1.5"${stageState === 'none' ? dash : ''}/>`
+  if (stageState === 'yours') out += `<circle cx="220" cy="${cy}" r="3.5" fill="${C.accent}"/>`
+  if (stageState === 'behind') out += text(220, cy + 4, String(stageCount > 99 ? 99 : stageCount), { font: 'mono', anchor: 'middle', fill: C.hl })
+  if (stageState === 'passed') out += `<path d="M215 ${cy}l3.5 3.5 6.5 -7" fill="none" stroke="${C.accent}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`
+
+  out += `<circle cx="410" cy="${cy}" r="13" fill="${C.canvas}" stroke="${hasLive ? C.wire : C.faint}" stroke-width="1.5"${hasLive ? '' : dash}/>`
+
+  // Labels under the stops: the middle one is placed first, and the outer two take the room left either side of it.
+  const ly = 400
+  if (unknown) {
+    out += text(16, ly, esc(branchLabel === '' ? 'Working' : branchIn(branchLabel, 150)), { font: branchLabel === '' ? 'sans' : 'mono' })
+    out += text(220, ly, 'Branch', { anchor: 'middle' }) + text(424, ly, 'Trunk', { anchor: 'end' })
+  } else {
+    const middle = fit(stageLabel, 120)
+    const half = widthOf(middle) / 2
+    out += text(16, ly, esc(branchIn(branchLabel, 220 - half - 12 - 16)), { font: 'mono', fill: C.hl })
+    out += text(220, ly, esc(middle), { anchor: 'middle', fill: stageState === 'behind' ? C.hl : C.muted })
+    if (liveLabel !== '') out += text(424, ly, esc(fitMono(liveLabel, 424 - (220 + half + 12))), { font: 'mono', anchor: 'end' })
+  }
+
+  // Every other lane, one quiet row each, in the order the track file gives them.
+  const rest = lanes.filter(lane => lane !== lit)
+  if (rest.length === 0) return { svg: out, h: TALL.h }
+  out += `<path d="M16 420.5H424" fill="none" stroke="${C.line}" stroke-width="1"/>`
+  rest.forEach((lane, at) => {
+    out += laneRow(lane, 438 + at * 28, now, 'tall', false)
+  })
+
+  return { svg: out, h: 424 + rest.length * 28 + 8 }
+}
+
+/** The wide board's release section, as it stood before the refined design reaches it. */
+function wideRelease(b: Board, names: TrackNames, now: number, flow: Wear): string {
   const repo = b.repo
   const here = repo !== undefined && repo.kind === 'repo' ? repo : undefined
   const dirty = here?.dirty ?? 0
-  const isWriting = wearOf('files') === 'live' || wearOf('shell') === 'live'
-  const edits = b.edited.length
-  const flow: Wear = isWriting ? 'live' : edits > 0 || dirty > 0 ? 'used' : 'idle'
-  const plural = (n: number, one: string): string => `${n} ${one}${n === 1 ? '' : 's'}`
-  const tagText =
-    here === undefined
-      ? edits > 0 ? `${plural(edits, 'file')} edited this turn` : 'no file edits yet'
-      : dirty > 0
-        ? isWide || dirty > 9 ? `${plural(dirty, 'file')} · not committed` : `${plural(dirty, 'file')} changed · not committed`
-        : edits > 0 ? `${edits} edited · all committed` : 'nothing to commit'
-  const tag =
-    `<rect x="${L.tag.x + 0.5}" y="${L.tag.y + 0.5}" width="${L.tag.w - 1}" height="25" rx="12.5" fill="${C.canvas}" stroke="${flow === 'idle' ? C.nodeLine : C.accent}"/>` +
-    `<text x="${L.tag.x + L.tag.w / 2}" y="${L.tag.y + 17}" text-anchor="middle" ${MONO} font-size="11" fill="${flow === 'idle' ? C.muted : C.accent}">${esc(short(tagText, Math.floor((L.tag.w - 12) / 6.6)))}</text>`
-
-  // The release track, from git: what is uncommitted, what is on this branch, and how it stands against the trunk.
   const ahead = here?.ahead ?? 0
   const behind = here?.behind ?? 0
   const unpushed = here?.unpushed
 
   type Stop = { name: string; under: string; count: string; isLit: boolean; isMarked?: boolean }
   const blank: Stop = { name: '', under: '', count: '', isLit: false }
-  const working: Stop = {
-    name: 'Working',
-    under: dirty === 0 ? 'clean' : `${dirty} file${dirty === 1 ? '' : 's'}`,
-    count: dirty === 0 ? '' : String(dirty),
-    isLit: dirty > 0,
-  }
+  const working: Stop = { name: 'Working', under: dirty === 0 ? 'clean' : plural(dirty, 'file'), count: dirty === 0 ? '' : String(dirty), isLit: dirty > 0 }
   const hasWorkingStop = here !== undefined && here.staging === undefined
   const onBranch: Stop = {
     name: here === undefined ? 'Branch' : short(here.branch, 15),
-    under:
-      dirty > 0 && !hasWorkingStop
-        ? `${dirty} uncommitted`
-        : unpushed === undefined
-          ? 'no remote'
-          : unpushed > 0
-            ? `${unpushed} to push`
-            : 'pushed',
+    under: dirty > 0 && !hasWorkingStop ? `${dirty} uncommitted` : unpushed === undefined ? 'no remote' : unpushed > 0 ? `${unpushed} to push` : 'pushed',
     count: ahead === 0 ? '' : `+${ahead}`,
     isLit: ahead > 0 || dirty > 0,
     isMarked: unpushed !== undefined && unpushed > 0,
   }
-
-  // With a staging folder named, the track reads as the release does: branch,
-  // then staging, then live. Without one, it shows what git alone can say.
   const stops: [Stop, Stop, Stop] =
     here === undefined
       ? [
@@ -225,18 +265,8 @@ export function drawBoard(b: Board, isWide: boolean, names: TrackNames, now: num
       : here.staging !== undefined
         ? [
             onBranch,
-            {
-              name: short(names.staging, 15),
-              under: `updated ${agoOf(here.staging.updatedAt, now)}`,
-              count: here.staging.behind === 0 ? '' : String(here.staging.behind),
-              isLit: false,
-            },
-            {
-              name: short(names.live, 15),
-              under: here.tag === undefined ? 'the trunk' : short(here.tag, 15),
-              count: '',
-              isLit: false,
-            },
+            { name: short(names.staging, 15), under: `updated ${agoOf(here.staging.updatedAt, now)}`, count: here.staging.behind === 0 ? '' : String(here.staging.behind), isLit: false },
+            { name: short(names.live, 15), under: here.tag === undefined ? 'the trunk' : short(here.tag, 15), count: '', isLit: false },
           ]
         : [
             working,
@@ -250,76 +280,114 @@ export function drawBoard(b: Board, isWide: boolean, names: TrackNames, now: num
           ]
 
   const lanes = here?.lanes ?? []
-  const shape = isWide ? WIDE_LANES : TALL_LANES
-  const [n1, n2, n3] = L.nodes
-  const anchorOf = (at: number, x: number): string =>
-    isWide || at === 1 ? `x="${x}" text-anchor="middle"` : at === 0 ? `x="${x - 14}" text-anchor="start"` : `x="${x + 14}" text-anchor="end"`
+  const nodes = [674, 770, 866]
+  const cy = 145
+  if (here !== undefined && lanes.length > 0) {
+    const shape = WIDE_LANES
+    const marker = markerOf(here, lanes)
+    const tail = marker === '' ? '' : ` · ${marker}`
+    return (
+      wire(`M630 145H632Q640 145 640 137V${shape.top + 8}Q640 ${shape.top} 648 ${shape.top}H${shape.bus}`, flow) +
+      drawLanes(lanes, shape, now) +
+      text(shape.left, shape.top - 14, `${esc(fit(here.branch, 224 - widthOf(tail)))}${esc(tail)}`)
+    )
+  }
 
-  let track = `<path d="M${n1 + 14} ${L.cy}H${n2 - 14}M${n2 + 14} ${L.cy}H${n3 - 14}" fill="none" stroke="${C.wire}" stroke-width="1.5"/>`
-  const places: [number, number, number] = [n1, n2, n3]
+  let out = wire(WIDE.route, flow) + `<path d="M${nodes[0]! + 14} ${cy}H${nodes[1]! - 14}M${nodes[1]! + 14} ${cy}H${nodes[2]! - 14}" fill="none" stroke="${C.wire}" stroke-width="1.5"/>`
   for (let at = 0; at < 3; at += 1) {
-    const stop = stops[at]
-    const x = places[at]
+    const stop = stops[at]!
+    const x = nodes[at]!
     const ring = here === undefined ? C.nodeLine : stop.isLit ? C.accent : C.wire
     const dash = here === undefined ? ' stroke-dasharray="3 3"' : ''
-    track +=
-      `<circle cx="${x}" cy="${L.cy}" r="13" fill="${C.canvas}" stroke="${ring}" stroke-width="${stop.isLit ? 2 : 1.5}"${dash}/>` +
-      (stop.count === '' ? '' : `<text x="${x}" y="${L.cy + 4}" text-anchor="middle" ${MONO} font-size="11" fill="${stop.isLit ? C.accent : C.muted}">${stop.count}</text>`) +
-      (stop.isMarked === true ? `<circle cx="${x + 11}" cy="${L.cy - 11}" r="3.5" fill="${C.port}"/>` : '') +
-      `<text ${anchorOf(at, x)} y="${L.labelY}" ${SANS} font-size="11" fill="${stop.isLit ? C.hl : C.muted}">${esc(stop.name)}</text>` +
-      (stop.under === '' ? '' : `<text ${anchorOf(at, x)} y="${L.labelY + 15}" ${SANS} font-size="11" fill="${C.muted}">${esc(stop.under)}</text>`)
+    out +=
+      `<circle cx="${x}" cy="${cy}" r="13" fill="${C.canvas}" stroke="${ring}" stroke-width="${stop.isLit ? 2 : 1.5}"${dash}/>` +
+      (stop.count === '' ? '' : text(x, cy + 4, stop.count, { font: 'mono', anchor: 'middle', fill: stop.isLit ? C.accent : C.muted })) +
+      (stop.isMarked === true ? `<circle cx="${x + 11}" cy="${cy - 11}" r="3.5" fill="${C.port}"/>` : '') +
+      text(x, 180, esc(stop.name), { anchor: 'middle', fill: stop.isLit ? C.hl : C.muted }) +
+      (stop.under === '' ? '' : text(x, 195, esc(stop.under), { anchor: 'middle' }))
   }
-  if (lanes.length > 0) {
-    track =
-      wire(
-        isWide
-          ? `M630 145H632Q640 145 640 137V${shape.top + 8}Q640 ${shape.top} 648 ${shape.top}H${shape.bus}`
-          : `M220 310V324Q220 332 212 332H${shape.bus + 8}Q${shape.bus} 332 ${shape.bus} 340`,
-        flow,
-      ) +
-      drawLanes(lanes, shape, now, C, SANS, MONO)
+  const said =
+    here === undefined
+      ? repo === undefined
+        ? 'Reading the repository…'
+        : repo.kind === 'blocked'
+          ? `Git did not run: ${repo.why}`
+          : repo.why === undefined
+            ? 'No git repository in this folder'
+            : `Git said: ${repo.why}`
+      : here.staging === undefined
+        ? 'Release track'
+        : here.staging.subject
+
+  return out + text(660, 110, esc(fit(said, 224)))
+}
+
+export function drawBoard(b: Board, isWide: boolean, names: TrackNames, now: number): string {
+  const L = isWide ? WIDE : TALL
+  const wearOf = (id: StationId): Wear => ((b.live[id] ?? 0) > 0 ? 'live' : 'idle')
+  let wires = ''
+  let chips = ''
+  let pins = ''
+
+  for (const id of Object.keys(L.spots) as StationId[]) {
+    const s = L.spots[id]
+    const wear = wearOf(id)
+    const isLive = wear === 'live'
+    const ink = isLive ? C.accent : C.muted
+    const count = b.counts[id] ?? 0
+    wires += wire(s.wire, wear)
+    chips +=
+      `<rect x="${s.x + 0.5}" y="${s.y + 0.5}" width="${s.w - 1}" height="27" rx="7.5" fill="${C.node}" stroke="${isLive ? C.accent : C.nodeLine}"/>` +
+      `<g transform="translate(${s.x + 8} ${s.y + 7}) scale(0.5833)" fill="none" stroke="${ink}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${ICONS[id]}</g>` +
+      text(s.x + 28, s.y + 18, NAMES[id], { fill: isLive ? C.accent : id === 'you' ? C.text : C.muted }) +
+      (count > 0 ? text(s.x + s.w - 8, s.y + 18, count > 99 ? '99+' : String(count), { font: 'mono', anchor: 'end', fill: ink }) : '')
+    pins += `<circle cx="${s.pin[0]}" cy="${s.pin[1]}" r="3.5" fill="${C.canvas}" stroke="${isLive ? C.accent : C.port}" stroke-width="1.5"/>`
   }
-  // With lanes, the caption names the branch and how its lane was found. On the
-  // tall board the feed wire comes down at x=220 just above the lanes, so the
-  // branch sits left of it and the marker right of it, and nothing crosses text.
-  const marker = lanes.some(lane => lane.isGuessed === true)
-    ? 'lane from files'
-    : here?.guess === 'tied'
-      ? 'lanes tied in files'
-      : here?.guess === 'none'
-        ? 'no lane in files'
-        : ''
-  if (here !== undefined && lanes.length > 0 && !isWide) {
-    const capY = shape.top - 14
-    track +=
-      `<text x="${shape.left}" y="${capY}" ${SANS} font-size="11" fill="${C.muted}">${esc(fit(here.branch, 190))}</text>` +
-      `<text x="${shape.right}" y="${capY}" text-anchor="end" ${SANS} font-size="11" fill="${C.muted}">${marker === '' ? `${lanes.length} tracks` : marker}</text>`
-  } else if (here !== undefined && lanes.length > 0) {
-    // Wide: the caption keeps to the lanes column, clear of the tool-call count
-    // that ends at x 630, with the branch giving way to the marker.
-    const tail = marker === '' ? '' : ` · ${marker}`
-    const room = 224 - [...tail].reduce((sum, letter) => sum + widthOf(letter), 0)
-    track += `<text x="${shape.left}" y="${shape.top - 14}" ${SANS} font-size="11" fill="${C.muted}">${esc(fit(here.branch, room))}${tail}</text>`
-  } else {
-    const capX = lanes.length > 0 ? shape.right : L.caption.x
-    const capY = lanes.length > 0 ? shape.top - 14 : L.caption.y
-    const capAnchor = lanes.length > 0 ? ' text-anchor="end"' : ''
-    track += `<text x="${capX}" y="${capY}"${capAnchor} ${SANS} font-size="11" fill="${C.muted}">${here === undefined ? (repo === undefined ? 'Reading the repository…' : repo.kind === 'blocked' ? `Git did not run: ${esc(short(repo.why, isWide ? 50 : 36))}` : repo.why === undefined ? 'No git repository in this folder' : `Git said: ${esc(short(repo.why, isWide ? 50 : 34))}`) : lanes.length > 0 ? `${lanes.length} tracks · ${esc(short(here.branch, 30))}${marker === '' ? '' : ` · ${marker}`}` : here.staging === undefined ? 'Release track' : esc(short(here.staging.subject, isWide ? 46 : 34))}</text>`
-  }
+
+  // The newest call still running names what Claude is doing; the lit station already says which tool.
+  const running = [...b.rows].reverse().find(r => r.status === 'run')
+  const doing = running !== undefined ? running.label : b.isWorking ? 'Thinking' : 'Waiting for you'
+  const cx = L.core.x + 70
+  const lift = b.context === undefined ? 10 : 0
+  const core =
+    (b.isWorking ? `<rect x="${L.core.x - 2}" y="${L.core.y - 2}" width="144" height="154" rx="12" fill="none" stroke="${C.ring}" stroke-width="4"/>` : '') +
+    `<rect x="${L.core.x + 0.5}" y="${L.core.y + 0.5}" width="139" height="149" rx="9.5" fill="${C.node}" stroke="${b.isWorking ? C.accent : C.nodeLine}"/>` +
+    text(cx, L.core.y + 47 + lift, 'CLAUDE', { font: 'mono', size: 15, weight: 500, spacing: 2, anchor: 'middle', fill: C.text }) +
+    text(cx, L.core.y + 68 + lift, esc(b.model === undefined ? '' : shortModel(b.model)), { font: 'mono', anchor: 'middle' }) +
+    text(cx, L.core.y + 90 + lift, esc(fit(doing, 124)), { anchor: 'middle', fill: C.text }) +
+    (b.context === undefined ? '' : text(cx, L.core.y + 110, `context ${Math.round(b.context)}%`, { font: 'mono', anchor: 'middle' }))
+
+  // Files and Shell are the two stations that change the repository: their wires merge and run on to the branch.
+  const repo = b.repo
+  const here = repo !== undefined && repo.kind === 'repo' ? repo : undefined
+  const dirty = here?.dirty ?? 0
+  const isWriting = wearOf('files') === 'live' || wearOf('shell') === 'live'
+  const edits = b.edited.length
+  const flow: Wear = isWriting ? 'live' : edits > 0 || dirty > 0 ? 'used' : 'idle'
+  const tagText =
+    here === undefined
+      ? edits > 0 ? `${plural(edits, 'file')} edited this turn` : 'no file edits yet'
+      : dirty > 0
+        ? isWide || dirty > 9 ? `${plural(dirty, 'file')} · not committed` : `${plural(dirty, 'file')} changed · not committed`
+        : edits > 0 ? `${edits} edited · all committed` : 'nothing to commit'
+  const tag =
+    `<rect x="${L.tag.x + 0.5}" y="${L.tag.y + 0.5}" width="${L.tag.w - 1}" height="25" rx="12.5" fill="${C.canvas}" stroke="${flow === 'idle' ? C.nodeLine : C.accent}"/>` +
+    text(L.tag.x + L.tag.w / 2, L.tag.y + 17, esc(fitMono(tagText, L.tag.w - 12)), { font: 'mono', anchor: 'middle', fill: flow === 'idle' ? C.muted : C.accent })
+
+  const release = isWide ? { svg: wideRelease(b, names, now, flow), h: WIDE.h } : tallRelease(b, names, now, flow)
+  const H = release.h
 
   // In the wide layout the count stops short of the lanes column.
   const head =
-    `<text x="16" y="28" ${SANS} font-size="11" font-weight="600" letter-spacing="0.6" fill="${C.muted}">NOW</text>` +
-    `<text x="${isWide ? 630 : L.w - 16}" y="28" text-anchor="end" ${MONO} font-size="11" fill="${C.muted}">${b.calls} tool call${b.calls === 1 ? '' : 's'} this turn</text>`
-
-  const H = lanes.length === 0 || isWide ? L.h : Math.max(L.h, laneHeight(lanes.length, shape))
+    text(16, 28, 'NOW', { weight: 600, spacing: 0.6 }) +
+    text(isWide ? 630 : L.w - 16, 28, `${b.calls} tool call${b.calls === 1 ? '' : 's'} this turn`, { font: 'mono', anchor: 'end' })
 
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${L.w} ${H}" width="${L.w}" height="${H}">` +
     `<defs><pattern id="sb-dots" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="12" cy="12" r="1" fill="${C.dot}"/></pattern></defs>` +
     `<rect width="${L.w}" height="${H}" rx="12" fill="${C.canvas}"/>` +
     `<rect width="${L.w}" height="${H}" rx="12" fill="url(#sb-dots)"/>` +
-    head + wires + wire(L.merge, flow) + (lanes.length > 0 ? '' : wire(L.route, flow)) + core + chips + pins + tag + track +
+    head + wires + wire(L.merge, flow) + core + chips + pins + tag + release.svg +
     `</svg>`
   )
 }
