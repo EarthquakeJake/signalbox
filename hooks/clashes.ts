@@ -16,6 +16,12 @@ const MOST_MERGES = 6
 const MOST_CLASHES = 8
 /** Uncommitted files kept per worktree, so a folder of build output cannot swamp the pane. */
 const MOST_DIRTY = 500
+/**
+ * Whether a branch git counts as merged still takes part when its worktree
+ * holds uncommitted work, as a fresh chat's branch does before its first
+ * commit. Off for now, as briefed: merged branches are left out. The chief decides.
+ */
+const WITH_FRESH_WORKTREES = false
 
 type Run = { exitCode: number; stdout: string }
 
@@ -147,6 +153,7 @@ export async function readClashes(
   now: number,
 ): Promise<Clashing> {
   const none: Clashing = { clashes: [], byBranch: new Map() }
+  if (!WITH_FRESH_WORKTREES) merged = []
   if (trunkSha === '' || open.length + merged.length < 2) return none
 
   // Uncommitted files per branch: yours from this folder's status, the rest from their worktrees, a few per refresh.

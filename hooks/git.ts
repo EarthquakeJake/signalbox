@@ -1,6 +1,6 @@
 import type { EngineInterface } from 'claude-code'
 
-import type { Lane, OpenBranch, Repo, Stage } from '../types'
+import type { Clash, Lane, OpenBranch, Repo, Stage } from '../types'
 import { readLanes, readSpecs, refOf } from './tracks'
 
 const NONE: Repo = { kind: 'none' }
@@ -89,6 +89,18 @@ async function headOf($: EngineInterface, cwd: string): Promise<string | undefin
   }
 }
 
+/**
+ * The path in a `status --porcelain=v2` line: after eight fields for a change,
+ * nine for a rename (whose old name follows a tab), ten for a conflict, one
+ * for an untracked file. A quoted path loses its quotes.
+ */
+const pathOf = (line: string): string => {
+  const skip = line.startsWith('1 ') ? 8 : line.startsWith('2 ') ? 9 : line.startsWith('u ') ? 10 : 1
+  const path = (line.split(' ').slice(skip).join(' ').split('\t')[0] ?? '').trim()
+
+  return path.length > 1 && path.startsWith('"') && path.endsWith('"') ? path.slice(1, -1) : path
+}
+
 /** Reads the branch picture: what is uncommitted, where this branch stands, and what the stages hold. */
 export async function readRepo($: EngineInterface, cwd: string, asked: string, stagingPath: string, stagingRef: string): Promise<Repo> {
   // The first call apart, so that a host which runs no commands is told apart
@@ -113,11 +125,17 @@ export async function readRepo($: EngineInterface, cwd: string, asked: string, s
   let upstream = ''
   let unpushed: number | undefined
   let dirty = 0
+  // The same files by name, so this folder's uncommitted work counts in clashes as the branch you are on.
+  const dirtyFiles: string[] = []
   for (const line of status.stdout.split('\n')) {
     if (line.startsWith('# branch.head ')) branch = line.slice(14).trim()
     else if (line.startsWith('# branch.upstream ')) upstream = line.slice(18).trim()
     else if (line.startsWith('# branch.ab ')) unpushed = countOf(line.slice(12).replace(/[+-]/g, ''), 0)
-    else if (/^[12u?] /.test(line)) dirty += 1
+    else if (/^[12u?] /.test(line)) {
+      dirty += 1
+      const path = pathOf(line)
+      if (path !== '' && dirtyFiles.length < 500) dirtyFiles.push(path)
+    }
   }
   if (branch === '' || branch === '(detached)') {
     branch = said(await git($, ['rev-parse', '--short', 'HEAD'], cwd)) || 'detached'
@@ -141,15 +159,19 @@ export async function readRepo($: EngineInterface, cwd: string, asked: string, s
   let guess: 'none' | 'tied' | undefined
   let merged: number | undefined
   let loose: OpenBranch[] | undefined
+  let clashes: Clash[] | undefined
+  let clash: Clash['level'] | undefined
   if (trunkRef !== undefined) {
     const now = await $.clock.now()
     const specs = await readSpecs($, cwd)
     if (specs.length > 0) {
-      const placed = await readLanes($, cwd, trunkRef, specs, branch, now)
+      const placed = await readLanes($, cwd, trunkRef, specs, branch, now, dirtyFiles)
       lanes = placed.lanes
       guess = placed.guess
       merged = placed.merged
       loose = placed.loose
+      clashes = placed.clashes
+      clash = placed.clash
     } else if (stagingRef !== '') {
       const found = await refOf($, cwd, stagingRef)
       if (found !== undefined) staging = await stageOf($, cwd, trunkRef, found, now, true)
@@ -174,5 +196,7 @@ export async function readRepo($: EngineInterface, cwd: string, asked: string, s
     ...(guess === undefined || lanes === undefined || lanes.length === 0 ? {} : { guess }),
     ...(merged === undefined ? {} : { merged }),
     ...(loose === undefined || loose.length === 0 ? {} : { loose }),
+    ...(clashes === undefined || clashes.length === 0 ? {} : { clashes }),
+    ...(clash === undefined ? {} : { clash }),
   }
 }
