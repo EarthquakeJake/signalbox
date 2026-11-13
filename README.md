@@ -108,7 +108,7 @@ Everything else in the file is ignored. All four settings above are ignored once
 
 Signalbox listens to the session's own events: when a turn starts and ends, when the model takes a step, and when a tool is called. From a tool call it keeps the tool's name and a few words for the feed (a file's name, a command's description). It keeps this in the session's state and nowhere else.
 
-For the release track it runs `git` in the session's own folder, read-only: `git status`, `git for-each-ref` or `git symbolic-ref`, `git rev-list --count`, and, where a staging folder is set, `git log -1` on that folder and `git describe --tags`. Nothing is written, nothing is fetched from a remote, and a repository that does not answer within five seconds is left alone. The read happens when a session starts, after a turn, after a call that touched files or the shell, and otherwise every twenty seconds.
+For the release track it runs `git` in the session's own folder, read-only: `git status`, `git for-each-ref` or `git symbolic-ref`, `git rev-list --count`, and, where a staging folder is set, `git log -1` on that folder and `git describe --tags`. Nothing is written, nothing is fetched from a remote, and a repository that does not answer within five seconds is left alone. The read happens when a session starts, after a turn, after a call that touched files or the shell, and otherwise every twenty seconds. It asks the session where it is running each time, so a session given its folder after it starts, or moved by `/cd` or into a worktree, still reads the right repository.
 
 Where git will not answer, the board says so in git's own words rather than claiming the folder holds no repository, and on a host where no command may run at all it reads `.git/HEAD` for the branch name.
 
@@ -122,7 +122,7 @@ It makes no network requests of its own, and calls no model. It never changes or
 
 ## Status
 
-Version 0.5.1, an early release. Built and tried on Claude Code 2.1.321 in the desktop app on Windows. Other surfaces are covered by the mod's tests but have not been tried by hand. The test engine serves no processes, so the git reading is covered by its failing case alone and was checked by hand in a real repository.
+Version 0.5.2, an early release. Built and tried on Claude Code 2.1.321 in the desktop app on Windows. Other surfaces are covered by the mod's tests but have not been tried by hand. The test engine serves no processes, so the git reading is covered by its failing case alone and was checked by hand in a real repository.
 
 ## Development
 

@@ -23,6 +23,7 @@ test('a shell call shows in the feed and the board is drawn', async ($, on) => {
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('clock.now', () => ({ value: 1000 }))
+  on('session.cwd', () => ({ value: '/repo' }))
   on('tool.call', () => ({ result: {} }))
 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
@@ -57,6 +58,7 @@ test('a host that runs no commands says git did not run', async ($, on) => {
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('clock.now', () => ({ value: 1000 }))
+  on('session.cwd', () => ({ value: '/repo' }))
 
   await $.session.start({ cwd: '/tmp', surface: 'desktop', isInteractive: true })
   await settle()

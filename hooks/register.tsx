@@ -117,8 +117,9 @@ const took = (row: Row): string => {
   return ms < 100 ? '' : ms < 10000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.round(ms / 1000)}s`
 }
 
-// The folder the session works in and the trunk to measure against, set when the module loads.
-let where: string | undefined
+// The trunk to measure against, set when the module loads. The folder is asked
+// for on every read, never kept: a session is given its folder after it starts,
+// and /cd or a worktree move changes it again.
 let asked = ''
 let stagingPath = ''
 let stagingRef = ''
@@ -127,10 +128,12 @@ let isReading = false
 
 /** Re-reads the branch picture, at most once every three seconds, never holding up the caller. */
 async function refresh($: EngineInterface, isForced: boolean): Promise<void> {
-  if (where === undefined || isReading) return
+  if (isReading) return
   const now = await quietly(() => $.clock.now())
   if (now === undefined) return
   if (!isForced && now - readAt < 3000) return
+  const where = await quietly(() => $.session.cwd())
+  if (where === undefined || where === '') return
   isReading = true
   readAt = now
   try {
@@ -153,7 +156,6 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     await quietly(() => $.command.register({ name: 'signalbox', description: 'Open the Signalbox pane' }))
     void quietly(() => $.ui.open({ id: PANE, title: TITLE }))
-    where = e.cwd
     void refresh($, true)
     if (!isTicking) {
       isTicking = true
