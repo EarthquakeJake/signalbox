@@ -98,7 +98,7 @@ const yourEntry = (here: Here): OpenBranch | undefined =>
 function workWords(b: Board, here: Here, isShort: boolean): string {
   const files = (n: number): string => `${n} file${n === 1 ? '' : 's'}`
   if (here.dirty > 0) return isShort ? `${files(here.dirty)} · not committed` : `${files(here.dirty)} changed · not committed`
-  return b.edited.length > 0 ? `${b.edited.length} edited · all committed` : 'nothing to commit'
+  return b.edited.length > 0 ? `${b.edited.length} edited · ${isShort ? '' : 'all '}committed` : 'nothing to commit'
 }
 
 /** The releases to list: your lane's, else the first lane with any, else the trunk's newest tag. */
@@ -107,7 +107,8 @@ function releasesOf(here: Here): { title: string; rows: Array<{ name: string; at
   const lane = [yourLane(here), ...lanes].find(l => l !== undefined && ((l.releases ?? []).length > 0 || l.live !== undefined))
   if (lane !== undefined) {
     const rows = (lane.releases ?? []).length > 0 ? (lane.releases ?? []).slice(0, 4) : [{ name: lane.live as string }]
-    return { title: `${lane.name} releases`, rows }
+    // A lane already named for its releases keeps its name alone, rather than `Release releases`.
+    return { title: /release/i.test(lane.name) ? lane.name : `${lane.name} releases`, rows }
   }
 
   return here.tag === undefined ? { title: '', rows: [] } : { title: 'Releases', rows: [{ name: here.tag }] }
@@ -307,10 +308,12 @@ function tallSpine(b: Board, here: Here, now: number): string {
     ry += 8
     body += label(rightX, ry + 4, fit(rel.title, rightW, 11, 600))
     ry += 22
+    // The newest is the live one: its pill is silk, and `live` goes with its age beside it, where there is room.
     rel.rows.forEach((r, at) => {
-      const p = pillAt(rightX, ry, fitMono(at === 0 ? `${tagWords(r.name)} · live` : tagWords(r.name), rightW - 70), at === 0)
+      const p = pillAt(rightX, ry, fitMono(tagWords(r.name), rightW - 90), at === 0)
       body += p.svg
-      if (r.at !== undefined) body += text(p.right + 8, ry + 4, esc(fit(agoOf(r.at, now), W - 16 - p.right - 8)))
+      const when = [at === 0 ? 'live' : '', r.at === undefined ? '' : agoOf(r.at, now)].filter(w => w !== '').join(' · ')
+      if (when !== '') body += text(p.right + 8, ry + 4, esc(fit(when, W - 16 - p.right - 8)), { fill: at === 0 ? C.text : C.muted })
       ry += 28
     })
     ry -= 14
@@ -425,8 +428,8 @@ function wideSpine(b: Board, here: Here, now: number): string {
     // Capitals with letter spacing run wider than the table's lower case; the gap allows for it.
     rx += widthOf(title.toUpperCase(), 11, 600) * 1.08 + 0.6 * title.length + 16
     for (const [at, r] of rel.rows.entries()) {
-      const words = at === 0 ? `${tagWords(r.name)} · live` : tagWords(r.name)
-      const when = r.at === undefined ? '' : agoOf(r.at, now)
+      const words = tagWords(r.name)
+      const when = [at === 0 ? 'live' : '', r.at === undefined ? '' : agoOf(r.at, now)].filter(w => w !== '').join(' · ')
       const need = monoWidth(words) + 20 + (when === '' ? 0 : widthOf(when) + 8)
       if (rx + need > W - 16) break
       const p = pillAt(rx, 256, words, at === 0)
