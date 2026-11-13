@@ -53,6 +53,11 @@ In the desktop app, where `/plugin` does not run: click **+** next to the prompt
 
 Start a new session afterwards. The pane opens by itself; `/signalbox` opens it again if you closed it.
 
+## Two views
+
+- **The board** (`/signalbox board`, the default): Claude, its tools, and the lanes.
+- **The spine** (`/signalbox spine`): the trunk drawn as a spine, newest at the top, with each open branch joined to it where it forked, far-behind branches dashed in red, your branch and your lane's staging beside it, and the releases below.
+
 ## Settings
 
 | Setting | Default | What it does |
@@ -125,7 +130,7 @@ It makes no network requests of its own, and calls no model. It never changes or
 
 ## Status
 
-Version 0.10.0, an early release. Both layouts have been rendered and looked at, with lanes and without. Built and tried on Claude Code 2.1.321 in the desktop app on Windows. Other surfaces are covered by the mod's tests but have not been tried by hand. The test engine serves no processes, so the git reading is covered by its failing case alone and was checked by hand in a real repository.
+Version 0.11.0, an early release. Both layouts have been rendered and looked at, with lanes and without. Built and tried on Claude Code 2.1.321 in the desktop app on Windows. Other surfaces are covered by the mod's tests but have not been tried by hand. The test engine serves no processes, so the git reading is covered by its failing case alone and was checked by hand in a real repository.
 
 ## Development
 

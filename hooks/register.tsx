@@ -4,6 +4,7 @@ import type { EngineInterface, Register } from 'claude-code'
 import type { Board, Row, StationId } from '../types'
 import { NAMES, drawBoard, short } from './draw'
 import { readRepo } from './git'
+import { drawSpine } from './spine'
 
 const PANE = 'signalbox'
 const TITLE = 'Signalbox'
@@ -168,7 +169,7 @@ export const register: Register = (on, options) => {
   }
 
   on('session.start', async ($, e, next) => {
-    await quietly(() => $.command.register({ name: 'signalbox', description: 'Open the Signalbox pane' }))
+    await quietly(() => $.command.register({ name: 'signalbox', description: 'Open the Signalbox pane; add spine or board to switch views' }))
     void quietly(() => $.ui.open({ id: PANE, title: TITLE }))
     void refresh($, true)
     if (!isTicking) {
@@ -180,10 +181,15 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
-  on('command.run', { command: 'signalbox' }, async $ => {
+  on('command.run', { command: 'signalbox' }, async ($, e) => {
+    // `/signalbox spine` and `/signalbox board` switch the picture; plain `/signalbox` opens the pane.
+    const asked = (e.args ?? '').trim().toLowerCase()
+    const view = asked === 'spine' || asked === 'board' ? asked : undefined
+    if (view !== undefined) await quietly(() => update($, board, b => ({ ...b, view })))
     const opened = await $.ui.open({ id: PANE, title: TITLE })
+    if (!opened.isPlaced) return { text: 'The pane could not be shown here.' }
 
-    return { text: opened.isPlaced ? 'Signalbox opened.' : 'The pane could not be shown here.' }
+    return { text: view === undefined ? 'Signalbox opened. Try /signalbox spine or /signalbox board.' : `Signalbox now shows the ${view}.` }
   })
 
   on('turn.start', async ($, e, next) => {
@@ -276,18 +282,23 @@ export const register: Register = (on, options) => {
     const running = [...state.rows].reverse().find(r => r.status === 'run')
     const alt = `${TITLE}. ${running !== undefined ? `${NAMES[running.station]}: ${running.label}` : state.isWorking ? 'Thinking' : 'Waiting for you'}`
 
+    const picture = state.view === 'spine' ? drawSpine(state, isWide, now) : drawBoard(state, isWide, names, now)
+
+    // Centred rather than stretched, so a broad pane leaves the drawing at its own size instead of blowing it up.
     // The wide board draws the feed itself, under the tag, where a short pane cannot cut it off.
     if (isWide) {
       return (
-        <Box flexDirection="column">
-          <Svg source={drawBoard(state, isWide, names, now)} alt={alt} />
+        <Box flexDirection="column" alignItems="center">
+          <Svg source={picture} alt={alt} />
         </Box>
       )
     }
 
     return (
       <Box flexDirection="column" gap={1}>
-        <Svg source={drawBoard(state, isWide, names, now)} alt={alt} />
+        <Box flexDirection="column" alignItems="center">
+          <Svg source={picture} alt={alt} />
+        </Box>
         <Box flexDirection="column">{feed}</Box>
       </Box>
     )

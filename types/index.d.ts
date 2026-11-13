@@ -129,6 +129,8 @@ export type Board = {
   isWorking: boolean
   model?: string
   context?: number
+  /** Which picture the pane shows: the board, or the trunk as a spine. Absent means the board. */
+  view?: 'board' | 'spine'
   /** The branch picture, re-read in the background; absent until the first read. */
   repo?: Repo
 }

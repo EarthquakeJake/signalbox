@@ -148,3 +148,21 @@ test('a branch name is cut by its width, so wide letters stop short of the wire'
   expect(fit('claude/awesome-wozniak-mw3m9b7', 200)).toBe('claude/awesome-wozniak-mw3m9b7')
   expect(fit('claude/MMMMWWWWMMMMWWWWMMMMWWWW', 190).length).toBeLessThan(24)
 })
+
+test('/signalbox spine switches the pane to the spine, and /signalbox board back', async ($, on) => {
+  on('command.register', () => ({ value: { command: 'signalbox' } }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('clock.now', () => ({ value: 1000 }))
+  on('session.cwd', () => ({ value: '/repo' }))
+
+  await $.command.run({ command: 'signalbox', args: 'spine' })
+  const spine = await $.ui.mount(pane(60, 60))
+  expect(JSON.stringify(await spine.find({ type: 'Svg' }))).toContain('>SPINE<')
+  await spine.unmount()
+
+  await $.command.run({ command: 'signalbox', args: 'board' })
+  const back = await $.ui.mount(pane(60, 60))
+  expect(JSON.stringify(await back.find({ type: 'Svg' }))).toContain('CLAUDE')
+  expect(JSON.stringify(await back.find({ type: 'Svg' }))).not.toContain('>SPINE<')
+  await back.unmount()
+})

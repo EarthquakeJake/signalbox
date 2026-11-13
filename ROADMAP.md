@@ -6,11 +6,8 @@ The design reference is the **Refined board** page of the Release map canvas: ht
 
 | Track | Work | Branch |
 | --- | --- | --- |
-| Data | Spine data: `Lane.releases` (each lane's newest tags with dates) and `Repo.loose` (open branches in no lane). | `data/spine` |
-| Board | **Option 3, the spine** (canvas page "Fused with work map", `FusedSpine`): the trunk drawn as a spine, open branches hanging off it where they forked, older releases down it. A second view in `hooks/spine.ts`, beside the board. | `board/spine` |
-| Release | Switching views: `/signalbox spine` and `/signalbox board`. | chief |
-| Quality | Why the switch to the wide layout sometimes sticks when the pane is reshaped, and a fix proposal. | `quality/layout-switch` |
-| Design | A revised mock-up on the canvas: the board slimmer and closer to option 2's refinement, with more colour in the icons, as options for Jake to choose from. | canvas |
+| Quality | The wide layout sticks on height-only resizes: the host does not redraw then. A timed redraw may fix it; waiting on Jake's drag check. | — |
+| Board | Option A from the canvas page "Board, slimmer": tighter cards and a colour per station icon. Prototype patches in `board-slimmer/`. | `board/slim-a` |
 
 ## Next
 
@@ -24,6 +21,7 @@ The design reference is the **Refined board** page of the Release map canvas: ht
 
 ## Done
 
+- 0.11.0: option 3, the spine, switched with `/signalbox spine` and `/signalbox board`; the drawing is centred rather than stretched in a broad pane.
 - 0.10.0: option 2's lane cards. A colour and icon per lane, its status, live tag as a pill, staging, and its open branches listed with behind and stale pills; the merged count at the foot. Wide lanes carry the same, on one line each. All known drawing faults fixed.
 - 0.9.0: the wide release section. Lanes in the right column, the feed drawn inside the wide board, and each lane's open branches and the merged count read from git (not drawn yet).
 - 0.8.0: the tall release section. Your lane as three large stops, the other lanes as rows under a hairline, text widths measured, and an in-repo render harness with a layout check.
