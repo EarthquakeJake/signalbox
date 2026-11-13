@@ -306,8 +306,8 @@ export async function readLanes($: EngineInterface, cwd: string, trunkRef: strin
     const isGuessed = !isNamed && here?.kind === 'lane' && here.index === index
     const found = spec.stagingPath === undefined && spec.stagingBranch === undefined ? undefined : await stageOf($, cwd, trunkRef, spec, now)
     // The call that already named what is live now carries each tag's date too, so the release history costs nothing more.
-    // Tags made in the same second, as a batch of old releases often is, fall back to version order: git's last sort key leads.
-    const tags = spec.tagPrefix === undefined ? '' : await git($, ['tag', '--sort=-v:refname', '--sort=-creatordate', '--format=%(refname:strip=2)%09%(creatordate:unix)', '--list', `${spec.tagPrefix}*`], cwd)
+    // Newest by version, not by date: a tag's date can be a backfill, and version order also ranks date-named tags. Each keeps its own date for display.
+    const tags = spec.tagPrefix === undefined ? '' : await git($, ['tag', '--sort=-v:refname', '--format=%(refname:strip=2)%09%(creatordate:unix)', '--list', `${spec.tagPrefix}*`], cwd)
     const releases = releasesOf(tags, now).slice(0, MOST_LISTED)
     const live = releases[0]?.name
 
