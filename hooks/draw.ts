@@ -1,5 +1,5 @@
 import type { Board, Lane, StationId } from '../types'
-import { C, STATION_TONE, agoOf, branchIn, esc, fit, fitMono, laneCard, laneColours, laneLine, stagingWords, text, widthOf } from './lanes'
+import { C, STATION_TONE, WIDE_HEIGHT, frame, agoOf, branchIn, esc, fit, fitMono, laneCard, laneColours, laneLine, stagingWords, text, widthOf } from './lanes'
 
 export { fit }
 
@@ -447,19 +447,12 @@ export function drawBoard(b: Board, isWide: boolean, names: TrackNames, now: num
     text(L.tag.x + L.tag.w / 2, L.tag.y + 17, esc(fitMono(tagText, L.tag.w - 12)), { font: 'mono', anchor: 'middle', fill: flow === 'idle' ? C.muted : C.accent })
 
   const release = isWide ? { svg: wideRelease(b, names, now, flow) + wideFeed(b), h: WIDE.h } : tallRelease(b, names, now, flow)
-  const H = release.h
 
   // In the wide layout the count stops short of the lanes column.
   const head =
     text(16, 28, 'NOW', { weight: 600, spacing: 0.6 }) +
     text(isWide ? 630 : L.w - 16, 28, `${b.calls} tool call${b.calls === 1 ? '' : 's'} this turn`, { font: 'mono', anchor: 'end' })
 
-  return (
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${L.w} ${H}" width="${L.w}" height="${H}">` +
-    `<defs><pattern id="sb-dots" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="12" cy="12" r="1" fill="${C.dot}"/></pattern></defs>` +
-    `<rect width="${L.w}" height="${H}" rx="12" fill="${C.canvas}"/>` +
-    `<rect width="${L.w}" height="${H}" rx="12" fill="url(#sb-dots)"/>` +
-    head + wires + wire(L.merge, flow) + core + chips + pins + tag + release.svg +
-    `</svg>`
-  )
+  // The frame trims the margin and sizes the canvas to what is drawn; the wide board keeps one height.
+  return frame(L.w, head + wires + wire(L.merge, flow) + core + chips + pins + tag + release.svg, isWide ? WIDE_HEIGHT : 0)
 }

@@ -13,6 +13,137 @@ export const MONO = `font-family="'JetBrains Mono', Consolas, ui-monospace, mono
 
 export const esc = (text: string): string => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
+// The canvas margin. Every view is laid out with 16 px at the sides and about 20
+// at the top; the frame moves the drawing by this much so it keeps 8 at the
+// sides and 10 at the top, and ends 10 below the lowest thing drawn.
+const MARGIN_SHIFT = { x: 8, y: 10 }
+const MARGIN_FOOT = 10
+/** The wide views' one height, board and spine alike, whatever they hold: 284 less the trimmed margin. */
+export const WIDE_HEIGHT = 268
+
+const round = (n: number): string => String(Math.round(n * 100) / 100)
+
+/** A path's `d` moved by (dx, dy): absolute commands move, relative ones already follow. Also returns its lowest y. */
+function movePath(d: string, dx: number, dy: number): { d: string; bottom: number } {
+  const tokens = d.match(/[a-zA-Z]|-?\d*\.?\d+(?:e-?\d+)?/g) ?? []
+  let out = ''
+  let bottom = -Infinity
+  let cmd = ''
+  let at = 0 // place within the current command's arguments
+  let y = 0
+  for (const t of tokens) {
+    if (/[a-zA-Z]/.test(t)) {
+      cmd = t
+      at = 0
+      out += t
+      continue
+    }
+    const n = Number(t)
+    let v = n
+    const isAbs = cmd === cmd.toUpperCase()
+    switch (cmd.toUpperCase()) {
+      case 'H':
+        v = isAbs ? n - dx : n
+        break
+      case 'V':
+        v = isAbs ? n - dy : n
+        if (isAbs) y = n
+        else y += n
+        break
+      case 'A': {
+        const k = at % 7
+        if (isAbs && k === 5) v = n - dx
+        if (isAbs && k === 6) {
+          v = n - dy
+          y = n
+        }
+        break
+      }
+      default: {
+        // M L T Q S C: coordinate pairs.
+        const isX = at % 2 === 0
+        if (isAbs) v = isX ? n - dx : n - dy
+        if (!isX) y = isAbs ? n : y + n
+      }
+    }
+    bottom = Math.max(bottom, y)
+    out += `${out.endsWith(cmd) ? '' : ' '}${round(v)}`
+    at += 1
+  }
+
+  return { d: out, bottom }
+}
+
+/**
+ * A view's drawing in its frame: moved up and left by the trimmed margin, with
+ * the canvas `width - 16` wide and as tall as the drawing needs plus the foot
+ * margin. Icon groups move by their `translate`; what is inside them stays as
+ * drawn. Every other element's x, y, cx, cy and path is moved.
+ */
+export function frame(width: number, body: string, least = 0): string {
+  const { x: dx, y: dy } = MARGIN_SHIFT
+  let bottom = 0
+  const stack: boolean[] = []
+  const moved = body.replace(/<(\/?)(\w+)([^>]*?)(\/?)>/g, (tag, close: string, name: string, attrs: string, self: string) => {
+    if (name === 'g') {
+      if (close === '/') {
+        stack.pop()
+        return tag
+      }
+      const t = /translate\(([-\d.]+)[ ,]+([-\d.]+)\)(?: scale\(([\d.]+)\))?/.exec(attrs)
+      const isInside = stack.some(Boolean)
+      if (self !== '/') stack.push(t !== null)
+      if (t === null || isInside) return tag
+      const scale = t[3] === undefined ? 1 : Number(t[3])
+      bottom = Math.max(bottom, Number(t[2]) + 24 * scale)
+      return tag.replace(t[0], `translate(${round(Number(t[1]) - dx)} ${round(Number(t[2]) - dy)})${t[3] === undefined ? '' : ` scale(${t[3]})`}`)
+    }
+    if (close === '/' || stack.some(Boolean)) return tag
+    let out = tag
+    const num = (key: string): number | undefined => {
+      const m = new RegExp(`\\s${key}="([-\\d.]+)"`).exec(attrs)
+      return m === null ? undefined : Number(m[1])
+    }
+    const set = (key: string, by: number): void => {
+      out = out.replace(new RegExp(`(\\s${key}=")([-\\d.]+)(")`), (_m, a: string, v: string, b: string) => `${a}${round(Number(v) - by)}${b}`)
+    }
+    if (name === 'path') {
+      const d = /\sd="([^"]*)"/.exec(attrs)
+      if (d !== null) {
+        const m = movePath(d[1] as string, dx, dy)
+        out = out.replace(d[0], ` d="${m.d}"`)
+        bottom = Math.max(bottom, m.bottom + 1)
+      }
+      return out
+    }
+    const x = num('x')
+    const y = num('y')
+    const cy = num('cy')
+    const r = num('r')
+    const h = num('height')
+    const size = num('font-size') ?? 11
+    if (name === 'text' && y !== undefined) bottom = Math.max(bottom, y + 0.28 * size)
+    if (name === 'rect' && y !== undefined && h !== undefined) bottom = Math.max(bottom, y + h + (/stroke-width="4"/.test(attrs) ? 2 : 0))
+    if (name === 'circle' && cy !== undefined && r !== undefined) bottom = Math.max(bottom, cy + r + 1)
+    if (x !== undefined) set('x', dx)
+    if (y !== undefined) set('y', dy)
+    if (num('cx') !== undefined) set('cx', dx)
+    if (cy !== undefined) set('cy', dy)
+    return out
+  })
+  const w = width - 2 * dx
+  // `least` keeps a view's height steady where its content varies, as the wide views do.
+  const h = Math.max(least, Math.ceil(bottom - dy + MARGIN_FOOT))
+
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">` +
+    `<defs><pattern id="sb-dots" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="12" cy="12" r="1" fill="${C.dot}"/></pattern></defs>` +
+    `<rect width="${w}" height="${h}" rx="12" fill="${C.canvas}"/><rect width="${w}" height="${h}" rx="12" fill="url(#sb-dots)"/>` +
+    moved +
+    `</svg>`
+  )
+}
+
 // Measured widths of the printable ASCII letters at 11 px, in tenths of a pixel,
 // from space to `~`: the wider of Inter and Segoe UI for each letter, so a fitted
 // text stays inside its room in either face. One row at 400, one at 600.
