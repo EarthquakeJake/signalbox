@@ -4,13 +4,11 @@ import { FIXTURES } from '../tools/fixtures'
 import { layoutProblems } from '../tools/layout'
 import { drawBoard } from './draw'
 
-// Faults the drawing already had when this check was written, seen in the
-// render harness's pictures and left to the Board track. They do not fail the
-// tests; anything new does. Remove a line once the drawing no longer has it.
-const KNOWN: Record<string, string[]> = {
-  'no-lanes-staging_wide': ['"updated 3h ago" overlaps "site-2026-11-13"'],
-  'files-running_tall': ['"Files" overlaps "99+"'],
-}
+// Faults the drawing is known to have, seen in the render harness's pictures
+// and left to the Board track. They do not fail the tests; anything new does.
+// Add a line only with a reason, and remove it once the drawing no longer has it.
+// The seven faults found in 0.7.0 were fixed with the lane cards.
+const KNOWN: Record<string, string[]> = {}
 
 for (const f of FIXTURES) {
   for (const isWide of [false, true]) {

@@ -1,5 +1,5 @@
 import type { Board, Lane, StationId } from '../types'
-import { C, agoOf, branchIn, esc, fit, fitMono, laneRow, stagingWords, text, widthOf } from './lanes'
+import { C, agoOf, branchIn, esc, fit, fitMono, laneCard, laneColours, laneLine, stagingWords, text, widthOf } from './lanes'
 
 export { fit }
 
@@ -224,15 +224,22 @@ function tallRelease(b: Board, names: TrackNames, now: number, flow: Wear): { sv
     if (liveLabel !== '') out += text(424, ly, esc(fitMono(liveLabel, 424 - (220 + half + 12))), { font: 'mono', anchor: 'end' })
   }
 
-  // Every other lane, one quiet row each, in the order the track file gives them.
+  // Every other lane as a card, in the order the track file gives them, then the merged branches at the foot.
   const rest = lanes.filter(lane => lane !== lit)
-  if (rest.length === 0) return { svg: out, h: TALL.h }
-  out += `<path d="M16 420.5H424" fill="none" stroke="${C.line}" stroke-width="1"/>`
-  rest.forEach((lane, at) => {
-    out += laneRow(lane, 438 + at * 28, now, 'tall', false)
-  })
+  const merged = here?.merged
+  if (rest.length === 0 && merged === undefined) return { svg: out, h: TALL.h }
+  const colours = laneColours(lanes)
+  let y = 424
+  for (const lane of rest) {
+    const card = laneCard(lane, y + 8, now, colours.get(lane) ?? C.muted, names.staging)
+    out += card.svg
+    y += 8 + card.h
+  }
+  if (merged === undefined) return { svg: out, h: y + 16 }
+  out += `<g transform="translate(16 ${y + 14}) scale(0.6667)" fill="none" stroke="${C.muted}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/></g>`
+  out += text(36, y + 26, merged === 0 ? 'No merged branches' : `${merged} merged ${merged === 1 ? 'branch' : 'branches'}`)
 
-  return { svg: out, h: 424 + rest.length * 28 + 8 }
+  return { svg: out, h: y + 40 }
 }
 
 /**
@@ -254,7 +261,7 @@ function wideLanes(here: Here, lanes: readonly Lane[], now: number, flow: Wear):
   }
   const rowAt = (at: number): number => 80 + at * 44
 
-  const count = `${lanes.length} ${lanes.length === 1 ? 'lane' : 'lanes'}`.toUpperCase()
+  const count = `${lanes.length} ${lanes.length === 1 ? 'lane' : 'lanes'}${here.merged === undefined || here.merged === 0 ? '' : ` · ${here.merged} merged`}`.toUpperCase()
   let out = text(660, 28, count, { weight: 600, spacing: 0.6 })
   if (marker !== '') out += text(884, 28, esc(fit(marker, 224 - widthOf(count, 11, 600) - 16)), { anchor: 'end' })
   out += text(660, 46, esc(branchIn(here.branch, 224)), { font: 'mono', fill: C.hl })
@@ -263,12 +270,13 @@ function wideLanes(here: Here, lanes: readonly Lane[], now: number, flow: Wear):
   if (litAt >= 0) {
     const cy = rowAt(litAt)
     const bend = cy < 145 ? -1 : 1
-    out += wire(`M630 145H636Q644 145 644 ${145 + bend * 8}V${cy - bend * 8}Q644 ${cy} 652 ${cy}H661`, flow)
+    out += wire(`M630 145H636Q644 145 644 ${145 + bend * 8}V${cy - bend * 8}Q644 ${cy} 652 ${cy}H657`, flow)
   } else {
     out += wire('M630 145H648', flow) + `<circle cx="651.5" cy="145" r="3.5" fill="${C.canvas}" stroke="${C.port}" stroke-width="1.5"/>`
   }
+  const colours = laneColours(lanes)
   shown.forEach((lane, at) => {
-    out += laneRow(lane, rowAt(at), now, 'wide', lane === lit)
+    out += laneLine(lane, rowAt(at), now, colours.get(lane) ?? C.muted, lane === lit)
   })
   if (shown.length < lanes.length) out += text(688, 266, `+${lanes.length - shown.length} more`)
 
@@ -285,7 +293,7 @@ function wideFeed(b: Board): string {
   rows.forEach((r, at) => {
     const glyph = r.status === 'run' ? '●' : r.status === 'ok' ? '·' : '✕'
     const line = fitMono(`${glyph} ${NAMES[r.station].padEnd(6)} ${r.label}`, 190)
-    out += text(440, 216 + at * 20, esc(line).replace(/ /g, '&#160;'), { font: 'mono', fill: r.status === 'run' ? C.text : r.status === 'err' ? C.hl : C.muted })
+    out += text(440, 216 + at * 20, esc(line).replace(/ /g, ' '), { font: 'mono', fill: r.status === 'run' ? C.text : r.status === 'err' ? C.hl : C.muted })
   })
 
   return out
@@ -341,6 +349,8 @@ function wideRelease(b: Board, names: TrackNames, now: number, flow: Wear): stri
   if (here !== undefined && lanes.length > 0) return wideLanes(here, lanes, now, flow)
 
   let out = wire(WIDE.route, flow) + `<path d="M${nodes[0]! + 14} ${cy}H${nodes[1]! - 14}M${nodes[1]! + 14} ${cy}H${nodes[2]! - 14}" fill="none" stroke="${C.wire}" stroke-width="1.5"/>`
+  const labelX = [652, 770, 884]
+  const labelAnchor = ['start', 'middle', 'end'] as const
   for (let at = 0; at < 3; at += 1) {
     const stop = stops[at]!
     const x = nodes[at]!
@@ -350,9 +360,9 @@ function wideRelease(b: Board, names: TrackNames, now: number, flow: Wear): stri
       `<circle cx="${x}" cy="${cy}" r="13" fill="${C.canvas}" stroke="${ring}" stroke-width="${stop.isLit ? 2 : 1.5}"${dash}/>` +
       (stop.count === '' ? '' : text(x, cy + 4, stop.count, { font: 'mono', anchor: 'middle', fill: stop.isLit ? C.accent : C.muted })) +
       (stop.isMarked === true ? `<circle cx="${x + 11}" cy="${cy - 11}" r="3.5" fill="${C.port}"/>` : '') +
-      // The last stop's words end at the margin rather than centring past it.
-      text(at === 2 ? 884 : x, 180, esc(stop.name), { anchor: at === 2 ? 'end' : 'middle', fill: stop.isLit ? C.hl : C.muted }) +
-      (stop.under === '' ? '' : text(at === 2 ? 884 : x, 195, esc(stop.under), { anchor: at === 2 ? 'end' : 'middle' }))
+      // The column holds three labels of 72 px: the first starts at its edge, the last ends at the margin.
+      text(labelX[at]!, 180, esc(fit(stop.name, 72)), { anchor: labelAnchor[at], fill: stop.isLit ? C.hl : C.muted }) +
+      (stop.under === '' ? '' : text(labelX[at]!, 195, esc(fit(stop.under, 72)), { anchor: labelAnchor[at] }))
   }
   const said =
     here === undefined
@@ -388,7 +398,12 @@ export function drawBoard(b: Board, isWide: boolean, names: TrackNames, now: num
       `<rect x="${s.x + 0.5}" y="${s.y + 0.5}" width="${s.w - 1}" height="27" rx="7.5" fill="${C.node}" stroke="${isLive ? C.accent : C.nodeLine}"/>` +
       `<g transform="translate(${s.x + 8} ${s.y + 7}) scale(0.5833)" fill="none" stroke="${ink}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${ICONS[id]}</g>` +
       text(s.x + 28, s.y + 18, NAMES[id], { fill: isLive ? C.accent : id === 'you' ? C.text : C.muted }) +
-      (count > 0 ? text(s.x + s.w - 8, s.y + 18, count > 99 ? '99+' : String(count), { font: 'mono', anchor: 'end', fill: ink }) : '')
+      // On the narrow chips a three-figure count takes smaller type, so it stays clear of the name.
+      (count > 0
+        ? count > 99 && s.w < 100
+          ? text(s.x + s.w - 5, s.y + 17.5, '99+', { font: 'mono', size: 9, anchor: 'end', fill: ink })
+          : text(s.x + s.w - 8, s.y + 18, count > 99 ? '99+' : String(count), { font: 'mono', anchor: 'end', fill: ink })
+        : '')
     pins += `<circle cx="${s.pin[0]}" cy="${s.pin[1]}" r="3.5" fill="${C.canvas}" stroke="${isLive ? C.accent : C.port}" stroke-width="1.5"/>`
   }
 
