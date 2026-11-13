@@ -1,6 +1,7 @@
 import type { EngineInterface } from 'claude-code'
 
-import type { Lane, OpenBranch, Stage, TrackSpec } from '../types'
+import type { Clash, Lane, OpenBranch, Stage, TrackSpec } from '../types'
+import { filesOf, keepFiles, readClashes, type FilesKept } from './clashes'
 import { matches, pickLane, type Pick } from './paths'
 
 /** Where a project may declare its lanes; the first one found wins. */
@@ -45,16 +46,18 @@ let placed = new Map<string, { key: string; pick: Pick | undefined }>()
  * of the files it changed since it left the trunk. Undefined when it changed
  * nothing the trunk lacks.
  */
-async function pickOf($: EngineInterface, cwd: string, trunkRef: string, trunkSha: string, ref: string, sha: string, specs: readonly TrackSpec[], kept: Map<string, { key: string; pick: Pick | undefined }>): Promise<Pick | undefined> {
+async function pickOf($: EngineInterface, cwd: string, trunkRef: string, trunkSha: string, ref: string, sha: string, specs: readonly TrackSpec[], kept: Map<string, { key: string; pick: Pick | undefined }>, keptFiles: FilesKept): Promise<Pick | undefined> {
   const key = `${sha}:${trunkSha}`
   const before = placed.get(ref)
   if (before !== undefined && before.key === key) {
     kept.set(ref, before)
+    // The verdict stands, but its files are kept too, so clashes need not ask for them again.
+    await filesOf($, cwd, trunkRef, trunkSha, sha, keptFiles)
 
     return before.pick
   }
-  const changed = await git($, ['diff', '--name-only', `${trunkRef}...${sha}`], cwd)
-  const files = changed.split('\n').map(one => one.trim()).filter(one => one !== '')
+  // The same diff clashes read, asked once between them.
+  const files = (await filesOf($, cwd, trunkRef, trunkSha, sha, keptFiles)) ?? []
   const pick = pickLane(files, specs.map(spec => spec.paths ?? []))
   kept.set(ref, { key, pick })
 
@@ -250,11 +253,21 @@ export type Placed = {
   merged?: number
   /** Open branches in no lane, newest first, at most four. */
   loose: OpenBranch[]
+  /** Open work that would collide, worst first, at most eight. */
+  clashes?: Clash[]
+  /** The worst clash the branch you are on is part of. */
+  clash?: Clash['level']
 }
 
-/** Fills in each declared lane: its open branches, its staging and what is live on it. */
-export async function readLanes($: EngineInterface, cwd: string, trunkRef: string, specs: readonly TrackSpec[], branch: string, now: number): Promise<Placed> {
+/**
+ * Fills in each declared lane: its open branches, its staging and what is live
+ * on it, and the clashes among the open branches. `hereDirty` is this folder's
+ * uncommitted files, counted as the branch you are on.
+ */
+export async function readLanes($: EngineInterface, cwd: string, trunkRef: string, specs: readonly TrackSpec[], branch: string, now: number, hereDirty: readonly string[] = []): Promise<Placed> {
   if (specs.length === 0) return { lanes: [], loose: [] }
+  // Each branch's changed files, shared by placing and clashes, kept for the next refresh.
+  const keptFiles: FilesKept = new Map()
   // Names, commits and commit times in the one call, so listing a lane's branches newest first costs nothing more.
   // The newest commit's subject rides along too, so a branch can say what it is for at no extra cost.
   const rows = (await git($, ['for-each-ref', '--format=%(refname:short)%09%(objectname)%09%(committerdate:unix)%09%(contents:subject)', 'refs/heads'], cwd))
@@ -300,7 +313,7 @@ export async function readLanes($: EngineInterface, cwd: string, trunkRef: strin
         .sort((a, b) => Number(b.name === branch) - Number(a.name === branch) || b.updatedAt - a.updatedAt)
         .slice(0, MOST_PLACED)
       for (const row of loose) {
-        const pick = await pickOf($, cwd, trunkRef, trunkSha, row.name, row.sha, specs, kept)
+        const pick = await pickOf($, cwd, trunkRef, trunkSha, row.name, row.sha, specs, kept, keptFiles)
         if (pick?.kind === 'lane') {
           byFiles[pick.index] = (byFiles[pick.index] ?? 0) + 1
           placedIn[pick.index]?.push(row.name)
@@ -310,7 +323,7 @@ export async function readLanes($: EngineInterface, cwd: string, trunkRef: strin
       // A detached head is no branch, so it is placed on its own.
       if (!isNamed && branch !== trunkName && !heads.includes(branch)) {
         const sha = await git($, ['rev-parse', 'HEAD'], cwd)
-        if (sha !== '') here = await pickOf($, cwd, trunkRef, trunkSha, 'HEAD', sha, specs, kept)
+        if (sha !== '') here = await pickOf($, cwd, trunkRef, trunkSha, 'HEAD', sha, specs, kept, keptFiles)
       }
       placed = kept
     }
@@ -395,5 +408,34 @@ export async function readLanes($: EngineInterface, cwd: string, trunkRef: strin
   const unmerged = open
   const merged = unmerged === undefined ? undefined : heads.filter(head => head !== trunkName && head !== branch && !unmerged.has(head)).length
 
-  return { lanes, ...(guess === undefined ? {} : { guess }), ...(merged === undefined ? {} : { merged }), loose }
+  // Clashes among open work: the trunk and staging branches are never work in flight.
+  const stages = new Set(specs.flatMap(spec => (spec.stagingBranch === undefined ? [] : [spec.stagingBranch])))
+  const working = rows.filter(row => row.name !== trunkName && !stages.has(row.name))
+  const clashing = await readClashes(
+    $,
+    cwd,
+    trunkRef,
+    trunkSha,
+    working.filter(row => isOpen(row.name)),
+    working.filter(row => !isOpen(row.name)),
+    branch,
+    hereDirty,
+    keptFiles,
+    now,
+  )
+  keepFiles(keptFiles)
+  for (const listed of [...lanes.flatMap(lane => lane.open ?? []), ...loose]) {
+    const level = clashing.byBranch.get(listed.name)
+    if (level !== undefined) listed.clash = level
+  }
+  const clash = clashing.byBranch.get(branch)
+
+  return {
+    lanes,
+    ...(guess === undefined ? {} : { guess }),
+    ...(merged === undefined ? {} : { merged }),
+    loose,
+    ...(clashing.clashes.length === 0 ? {} : { clashes: clashing.clashes }),
+    ...(clash === undefined ? {} : { clash }),
+  }
 }
