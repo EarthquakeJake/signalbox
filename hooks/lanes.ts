@@ -441,9 +441,6 @@ export function isRoutine(repo: ClashSource, c: Clash): boolean {
   return sharedLane(repo, c) !== undefined
 }
 
-/** A clash with the lane both its branches share, as Data gives it (`Clash.lane`, on data/clash-fixes). */
-type LanedClash = Clash & { lane?: string }
-
 /**
  * The lane both branches of a clash belong to, if they share one. Data says so in
  * `Clash.lane` (the lane's id), which counts every branch, not only the few a lane
@@ -451,9 +448,9 @@ type LanedClash = Clash & { lane?: string }
  * one crosses lanes. Older readings without it fall back to the lanes' open lists.
  */
 function sharedLane(repo: ClashSource, c: Clash): Lane | undefined {
-  const all = (repo.clashes ?? []) as LanedClash[]
+  const all = repo.clashes ?? []
   if (all.some(x => x.lane !== undefined)) {
-    const id = (c as LanedClash).lane
+    const id = c.lane
     return id === undefined ? undefined : (repo.lanes ?? []).find(lane => lane.id === id || lane.name === id) ?? { name: id, branches: 0, isHere: false }
   }
   const lane = laneOfBranch(repo, c.a)
