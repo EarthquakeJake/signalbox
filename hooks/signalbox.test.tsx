@@ -42,11 +42,11 @@ test('a shell call shows in the feed and the board is drawn', async ($, on) => {
 
 test('a tall pane gets the tall board and a short wide pane the wide one', async $ => {
   const tall = await $.ui.mount(pane(60, 60))
-  expect(JSON.stringify(await ui_svg(tall))).toContain('0 0 440 420')
+  expect(JSON.stringify(await ui_svg(tall))).toContain('0 0 424 404')
   await tall.unmount()
 
   const wide = await $.ui.mount(pane(120, 20))
-  expect(JSON.stringify(await ui_svg(wide))).toContain('0 0 900 284')
+  expect(JSON.stringify(await ui_svg(wide))).toContain('0 0 884 268')
   await wide.unmount()
 })
 

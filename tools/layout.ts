@@ -166,8 +166,10 @@ function wiresOf(svg: string): Segment[] {
 
 /** Boxes and circles a text should sit wholly inside or wholly outside. */
 function shapesOf(svg: string, width: number, height: number): Shape[] {
+  // Shapes inside a transformed group (the icons) are not drawn where they are written, as with the wires.
+  const plain = svg.replace(/<g\b[^>]*\btransform="[^"]*"[^>]*>[\s\S]*?<\/g>/g, '')
   const out: Shape[] = []
-  for (const m of svg.matchAll(/<rect\b([^>]*?)\/?>/g)) {
+  for (const m of plain.matchAll(/<rect\b([^>]*?)\/?>/g)) {
     const a = m[1] ?? ''
     const x = num(a, 'x')
     const y = num(a, 'y')
@@ -176,7 +178,7 @@ function shapesOf(svg: string, width: number, height: number): Shape[] {
     if (w >= width && h >= height) continue
     out.push({ left: x, right: x + w, top: y, bottom: y + h, what: `box at ${Math.round(x)},${Math.round(y)}` })
   }
-  for (const m of svg.matchAll(/<circle\b([^>]*?)\/?>/g)) {
+  for (const m of plain.matchAll(/<circle\b([^>]*?)\/?>/g)) {
     const a = m[1] ?? ''
     const cx = num(a, 'cx')
     const cy = num(a, 'cy')

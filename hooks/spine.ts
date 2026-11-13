@@ -1,6 +1,6 @@
 import type { Board, Lane, OpenBranch, StationId } from '../types'
 import { NAMES } from './draw'
-import { C, FAR_BEHIND, STALE_DAYS, STATION_TONE, TONE, agoOf, branchIn, esc, fit, fitMono, isMadeUpName, laneColours, laneTile, line, monoWidth, stagingWords, text, widthOf } from './lanes'
+import { C, FAR_BEHIND, WIDE_HEIGHT, frame as frameView, STALE_DAYS, STATION_TONE, TONE, agoOf, branchIn, esc, fit, fitMono, isMadeUpName, laneColours, laneTile, line, monoWidth, stagingWords, text, widthOf } from './lanes'
 import type { Piece } from './lanes'
 
 // The spine view: the trunk as one line, every open branch joined to it where
@@ -259,12 +259,12 @@ const unreadWords = (repo: Board['repo']): string =>
         ? repo.why === undefined ? 'No git repository in this folder' : `Git said: ${repo.why}`
         : ''
 
-const frame = (w: number, h: number, body: string): string =>
-  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">` +
-  `<defs><pattern id="sb-dots" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="12" cy="12" r="1" fill="${C.dot}"/></pattern></defs>` +
-  `<rect width="${w}" height="${h}" rx="12" fill="${C.canvas}"/><rect width="${w}" height="${h}" rx="12" fill="url(#sb-dots)"/>` +
-  body +
-  `</svg>`
+/**
+ * The spine in its frame: the shared one trims the margin and sizes the canvas
+ * to what is drawn. The wide spine (900 laid out) keeps the wide views' one
+ * height, so the pane does not jump as git answers; the height asked for is otherwise not needed.
+ */
+const frame = (w: number, _h: number, body: string): string => frameView(w, body, w > 600 ? WIDE_HEIGHT : 0)
 
 const label = (x: number, y: number, words: string, anchor: 'start' | 'end' = 'start'): string =>
   text(x, y, esc(words.toUpperCase()), { weight: 600, spacing: 0.6, anchor })
