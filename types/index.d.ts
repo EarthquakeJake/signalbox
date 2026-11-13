@@ -49,6 +49,8 @@ export type OpenBranch = {
   updatedAt: number
   /** True where it was placed in this lane by its files rather than its name. */
   isByFiles?: boolean
+  /** Its newest commit's subject, which says what the branch is for when its name does not. */
+  subject?: string
 }
 
 /** One lane as it stands now. */
@@ -67,6 +69,8 @@ export type Lane = {
   staging?: Stage
   /** The newest tag of this lane, which usually names what is live. */
   live?: string
+  /** True when staging holds exactly what is live (the same tree as the live tag), however far its branch sits from the trunk. */
+  isStagingLive?: boolean
   /** Whether this lane's checks passed on what staging holds now. */
   isPassed?: boolean
   /** Whether the branch you are on has already reached this lane's staging. */

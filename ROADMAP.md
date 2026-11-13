@@ -6,7 +6,10 @@ The design reference is the **Refined board** page of the Release map canvas: ht
 
 | Track | Work | Branch |
 | --- | --- | --- |
-| Quality | The wide layout sticks on height-only resizes: the host does not redraw then. A timed redraw may fix it; waiting on Jake's drag check. | — |
+| Design | Spine options on the canvas (2–3, from real Silkscreen data): calmer and more colourful, more room for the Claude ring, a minimal legend, no scale sentence. Jake picks one. | canvas |
+| Data | `OpenBranch.subject` (each branch's newest commit subject, as its description), `Lane.isStagingLive` (staging holds exactly what is live), and lane counts checked against Silkscreen's local branches. | `data/descriptions` |
+| Quality | Both views fit the pane: as large as it allows, never larger, never running off the bottom. And the redraw for height-only resizes. | `quality/fit-pane` |
+| Board | "UAT · same as live" instead of commit counts; every lane's live release on the spine when on the trunk; branch descriptions on cards and the spine. Then the spine option Jake picks. | `board/descriptions` |
 
 ## Next
 
@@ -15,6 +18,13 @@ The design reference is the **Refined board** page of the Release map canvas: ht
 
 ## Later
 
+- **Conflict signals** (next after this round; Jake calls it the core of Signalbox): red when two branches or chats would change the same files and collide (`git merge-tree`, no checkout), amber when they share a lane but not files.
+- **Lane check per turn:** the edit tag names its lane, and warns when one turn touches two lanes or a branch's prefix doesn't match its files.
+- **Release train:** a train from trunk to live while a deploy runs, with an estimate from recent runs, and a "needs you" stop when UAT holds unreleased work. Needs `gh`, so opt-in.
+- **Fetch on a timer**, opt-in, so teammates' pushed work shows.
+- **Needs-Jake counts** per lane, and waiting feedback per lane from the Intake mailbox.
+- **Leftover dev servers** per worktree (PID, port).
+- To check first: each chat's state (working, idle, waiting on Jake) may be out of a mod's reach; click-to-ask needs real buttons under the picture.
 - **Real deploy status.** What a stage is actually serving, where a project has a source for that, rather than inferring it from commits. Data.
 - **Counting every branch.** Today at most twelve unnamed branches are placed by their files. Data.
 
