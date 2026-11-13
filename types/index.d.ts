@@ -41,7 +41,7 @@ export type TrackSpec = {
 /** One lane as it stands now. */
 export type Lane = {
   name: string
-  /** Open branches that belong to this lane. */
+  /** Open branches that belong to this lane: those not yet merged into the trunk. */
   branches: number
   /** True while the branch you are on is one of them. */
   isHere: boolean

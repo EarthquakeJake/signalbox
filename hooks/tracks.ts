@@ -169,6 +169,17 @@ export async function readLanes($: EngineInterface, cwd: string, trunkRef: strin
   const named = specs.map(spec => heads.filter(head => head !== trunkName && (spec.branches ?? []).some(pattern => matches(pattern, head))))
   const isNamed = named.some(mine => mine.includes(branch))
 
+  // A branch already merged into the trunk is no longer in flight, so it is not
+  // counted. Where git cannot say, every branch counts, as before.
+  let open: Set<string> | undefined
+  try {
+    const ran = await $.process.run(['git', 'for-each-ref', '--format=%(refname:short)', `--no-merged=${trunkRef}`, 'refs/heads'], { cwd, timeoutMs: 5000 })
+    if (ran.exitCode === 0) open = new Set(ran.stdout.split('\n').map(one => one.trim()).filter(one => one !== ''))
+  } catch {
+    open = undefined
+  }
+  const isOpen = (name: string): boolean => open === undefined || open.has(name)
+
   // Every branch whose name claims no lane is placed by what it changed, so a
   // lane's count covers the branches the desktop app names for you too.
   const byFiles = specs.map(() => 0)
@@ -221,7 +232,7 @@ export async function readLanes($: EngineInterface, cwd: string, trunkRef: strin
 
     lanes.push({
       name: spec.name,
-      branches: mine.length + extra,
+      branches: mine.filter(isOpen).length + extra,
       ...(extra > 0 ? { byFiles: extra } : {}),
       isHere: mine.includes(branch) || isGuessed,
       ...(isGuessed ? { isGuessed: true } : {}),

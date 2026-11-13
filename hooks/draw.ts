@@ -1,13 +1,16 @@
 import type { Board, StationId } from '../types'
 import { TALL_LANES, WIDE_LANES, agoOf, drawLanes, laneHeight } from './lanes'
 
-// A dark circuit-board look. Off-white marks what Claude is doing now; copper marks connection points.
+// A dark circuit-board look in the Ink tokens. Silk marks what is running now;
+// copper marks connection points and where you are.
 const C = {
-  canvas: '#081013', node: '#0F191D', nodeLine: '#22323A', wire: '#3E525A',
-  text: '#EAF0EE', muted: '#8A9B98', accent: '#F1EDE3', port: '#C98B5E', hl: '#D4976A',
+  canvas: '#081013', node: '#0F191D', nodeLine: '#22323A', line: '#1A272D', dot: '#16232A',
+  wire: '#3E525A', text: '#EAF0EE', muted: '#8A9B98', faint: '#55656A',
+  accent: '#F1EDE3', ring: 'rgba(241,237,227,0.12)', port: '#C98B5E', hl: '#D4976A',
 }
-const SANS = 'font-family="Segoe UI, system-ui, sans-serif"'
-const MONO = 'font-family="Consolas, ui-monospace, monospace"'
+// Inter and JetBrains Mono where the host has them, the system's own faces where it does not.
+const SANS = `font-family="Inter, 'Segoe UI', system-ui, sans-serif"`
+const MONO = `font-family="'JetBrains Mono', Consolas, ui-monospace, monospace"`
 
 export const NAMES: Record<StationId, string> = {
   you: 'You', skills: 'Skills', hooks: 'Hooks', memory: 'Memory', model: 'Model',
@@ -112,13 +115,14 @@ export const shortModel = (model: string): string => {
 
 type Wear = 'idle' | 'used' | 'live'
 
-/** A wire: grey at rest, silk once used, and a moving dash while the call runs. */
+/** A wire: grey at rest, solid silk once it carries work, and light travelling along silk while a call runs. */
 function wire(d: string, wear: Wear): string {
   if (wear === 'idle') return `<path d="${d}" fill="none" stroke="${C.wire}" stroke-width="1.5"/>`
-  if (wear === 'used') return `<path d="${d}" fill="none" stroke="${C.accent}" stroke-width="1.5" opacity="0.6"/>`
+  if (wear === 'used') return `<path d="${d}" fill="none" stroke="${C.accent}" stroke-width="1.75"/>`
   return (
-    `<path d="${d}" fill="none" stroke="${C.accent}" stroke-width="5" opacity="0.18"/>` +
-    `<path d="${d}" fill="none" stroke="${C.accent}" stroke-width="1.75" stroke-dasharray="8 4"><animate attributeName="stroke-dashoffset" from="12" to="0" dur="0.6s" repeatCount="indefinite"/></path>`
+    `<path d="${d}" fill="none" stroke="${C.accent}" stroke-width="5" opacity="0.12"/>` +
+    `<path d="${d}" fill="none" stroke="${C.accent}" stroke-width="1.75" opacity="0.7"/>` +
+    `<path d="${d}" fill="none" stroke="${C.accent}" stroke-width="1.75" stroke-dasharray="8 16"><animate attributeName="stroke-dashoffset" from="24" to="0" dur="0.8s" repeatCount="indefinite"/></path>`
   )
 }
 
@@ -126,7 +130,7 @@ export type TrackNames = { staging: string; live: string }
 
 export function drawBoard(b: Board, isWide: boolean, names: TrackNames, now: number): string {
   const L = isWide ? WIDE : TALL
-  const wearOf = (id: StationId): Wear => ((b.live[id] ?? 0) > 0 ? 'live' : (b.counts[id] ?? 0) > 0 ? 'used' : 'idle')
+  const wearOf = (id: StationId): Wear => ((b.live[id] ?? 0) > 0 ? 'live' : 'idle')
   const ids = Object.keys(L.spots) as StationId[]
   let wires = ''
   let chips = ''
@@ -135,43 +139,52 @@ export function drawBoard(b: Board, isWide: boolean, names: TrackNames, now: num
   for (const id of ids) {
     const s = L.spots[id]
     const wear = wearOf(id)
-    const line = wear === 'live' ? C.accent : wear === 'used' ? C.wire : C.nodeLine
-    const ink = wear === 'live' ? C.accent : wear === 'used' ? C.text : C.muted
+    const isLive = wear === 'live'
+    const line = isLive ? C.accent : C.nodeLine
+    const ink = isLive ? C.accent : C.muted
     const count = b.counts[id] ?? 0
     wires += wire(s.wire, wear)
     chips +=
-      `<rect x="${s.x}" y="${s.y}" width="${s.w}" height="28" rx="8" fill="${C.node}" stroke="${line}"/>` +
-      `<g transform="translate(${s.x + 8} ${s.y + 7}) scale(0.583)" fill="none" stroke="${ink}" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round">${ICONS[id]}</g>` +
-      `<text x="${s.x + 28}" y="${s.y + 18}" ${SANS} font-size="11" fill="${ink}">${NAMES[id]}</text>` +
+      `<rect x="${s.x + 0.5}" y="${s.y + 0.5}" width="${s.w - 1}" height="27" rx="7.5" fill="${C.node}" stroke="${line}"/>` +
+      `<g transform="translate(${s.x + 8} ${s.y + 7}) scale(0.5833)" fill="none" stroke="${ink}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${ICONS[id]}</g>` +
+      `<text x="${s.x + 28}" y="${s.y + 18}" ${SANS} font-size="11" fill="${isLive ? C.accent : id === 'you' ? C.text : C.muted}">${NAMES[id]}</text>` +
       (count > 0 ? `<text x="${s.x + s.w - 8}" y="${s.y + 18}" text-anchor="end" ${MONO} font-size="11" fill="${ink}">${count > 99 ? '99+' : count}</text>` : '')
-    pins += `<circle cx="${s.pin[0]}" cy="${s.pin[1]}" r="3.5" fill="${C.canvas}" stroke="${wear === 'idle' ? C.port : C.accent}" stroke-width="1.5"/>`
+    pins += `<circle cx="${s.pin[0]}" cy="${s.pin[1]}" r="3.5" fill="${C.canvas}" stroke="${isLive ? C.accent : C.port}" stroke-width="1.5"/>`
   }
 
   // The newest call still running names what Claude is doing.
   const running = [...b.rows].reverse().find(r => r.status === 'run')
-  const doing = running !== undefined ? `${NAMES[running.station]}: ${running.label}` : b.isWorking ? 'Thinking' : 'Waiting for you'
+  // The lit station already says which tool, so the box names the action alone.
+  const doing = running !== undefined ? running.label : b.isWorking ? 'Thinking' : 'Waiting for you'
   const cx = L.core.x + 70
+  const lift = b.context === undefined ? 10 : 0
   const core =
-    (b.isWorking ? `<rect x="${L.core.x - 4}" y="${L.core.y - 4}" width="148" height="158" rx="13" fill="none" stroke="${C.accent}" stroke-width="4" opacity="0.12"/>` : '') +
-    `<rect x="${L.core.x}" y="${L.core.y}" width="140" height="150" rx="10" fill="${C.node}" stroke="${b.isWorking ? C.accent : C.nodeLine}"/>` +
-    `<text x="${cx}" y="${L.core.y + 58}" text-anchor="middle" ${MONO} font-size="15" letter-spacing="2" fill="${C.text}">CLAUDE</text>` +
-    `<text x="${cx}" y="${L.core.y + 76}" text-anchor="middle" ${MONO} font-size="11" fill="${C.muted}">${esc(b.model === undefined ? '' : shortModel(b.model))}</text>` +
-    `<text x="${cx}" y="${L.core.y + 100}" text-anchor="middle" ${SANS} font-size="11" fill="${C.text}">${esc(short(doing, 22))}</text>` +
-    (b.context === undefined ? '' : `<text x="${cx}" y="${L.core.y + 118}" text-anchor="middle" ${MONO} font-size="11" fill="${C.muted}">context ${Math.round(b.context)}%</text>`)
+    (b.isWorking ? `<rect x="${L.core.x - 2}" y="${L.core.y - 2}" width="144" height="154" rx="12" fill="none" stroke="${C.ring}" stroke-width="4"/>` : '') +
+    `<rect x="${L.core.x + 0.5}" y="${L.core.y + 0.5}" width="139" height="149" rx="9.5" fill="${C.node}" stroke="${b.isWorking ? C.accent : C.nodeLine}"/>` +
+    `<text x="${cx}" y="${L.core.y + 47 + lift}" text-anchor="middle" ${MONO} font-size="15" font-weight="500" letter-spacing="2" fill="${C.text}">CLAUDE</text>` +
+    `<text x="${cx}" y="${L.core.y + 68 + lift}" text-anchor="middle" ${MONO} font-size="11" fill="${C.muted}">${esc(b.model === undefined ? '' : shortModel(b.model))}</text>` +
+    `<text x="${cx}" y="${L.core.y + 90 + lift}" text-anchor="middle" ${SANS} font-size="11" fill="${C.text}">${esc(fit(doing, 124))}</text>` +
+    (b.context === undefined ? '' : `<text x="${cx}" y="${L.core.y + 110}" text-anchor="middle" ${MONO} font-size="11" fill="${C.muted}">context ${Math.round(b.context)}%</text>`)
 
   // Files and Shell are the two stations that change the repository: their wires merge and run on to the branch.
-  const isWriting = wearOf('files') === 'live' || wearOf('shell') === 'live'
-  const edits = b.edited.length
-  const flow: Wear = isWriting ? 'live' : edits > 0 ? 'used' : 'idle'
-  const tagText = edits === 0 ? 'no file edits this turn' : `${edits} file${edits === 1 ? '' : 's'} edited this turn`
-  const tag =
-    `<rect x="${L.tag.x}" y="${L.tag.y}" width="${L.tag.w}" height="26" rx="13" fill="${C.canvas}" stroke="${flow === 'idle' ? C.nodeLine : C.accent}"/>` +
-    `<text x="${L.tag.x + L.tag.w / 2}" y="${L.tag.y + 17}" text-anchor="middle" ${MONO} font-size="11" fill="${flow === 'idle' ? C.muted : C.accent}">${tagText}</text>`
-
-  // The release track, from git: what is uncommitted, what is on this branch, and how it stands against the trunk.
   const repo = b.repo
   const here = repo !== undefined && repo.kind === 'repo' ? repo : undefined
   const dirty = here?.dirty ?? 0
+  const isWriting = wearOf('files') === 'live' || wearOf('shell') === 'live'
+  const edits = b.edited.length
+  const flow: Wear = isWriting ? 'live' : edits > 0 || dirty > 0 ? 'used' : 'idle'
+  const plural = (n: number, one: string): string => `${n} ${one}${n === 1 ? '' : 's'}`
+  const tagText =
+    here === undefined
+      ? edits > 0 ? `${plural(edits, 'file')} edited this turn` : 'no file edits yet'
+      : dirty > 0
+        ? isWide || dirty > 9 ? `${plural(dirty, 'file')} · not committed` : `${plural(dirty, 'file')} changed · not committed`
+        : edits > 0 ? `${edits} edited · all committed` : 'nothing to commit'
+  const tag =
+    `<rect x="${L.tag.x + 0.5}" y="${L.tag.y + 0.5}" width="${L.tag.w - 1}" height="25" rx="12.5" fill="${C.canvas}" stroke="${flow === 'idle' ? C.nodeLine : C.accent}"/>` +
+    `<text x="${L.tag.x + L.tag.w / 2}" y="${L.tag.y + 17}" text-anchor="middle" ${MONO} font-size="11" fill="${flow === 'idle' ? C.muted : C.accent}">${esc(short(tagText, Math.floor((L.tag.w - 12) / 6.6)))}</text>`
+
+  // The release track, from git: what is uncommitted, what is on this branch, and how it stands against the trunk.
   const ahead = here?.ahead ?? 0
   const behind = here?.behind ?? 0
   const unpushed = here?.unpushed
@@ -281,6 +294,12 @@ export function drawBoard(b: Board, isWide: boolean, names: TrackNames, now: num
     track +=
       `<text x="${shape.left}" y="${capY}" ${SANS} font-size="11" fill="${C.muted}">${esc(fit(here.branch, 190))}</text>` +
       `<text x="${shape.right}" y="${capY}" text-anchor="end" ${SANS} font-size="11" fill="${C.muted}">${marker === '' ? `${lanes.length} tracks` : marker}</text>`
+  } else if (here !== undefined && lanes.length > 0) {
+    // Wide: the caption keeps to the lanes column, clear of the tool-call count
+    // that ends at x 630, with the branch giving way to the marker.
+    const tail = marker === '' ? '' : ` · ${marker}`
+    const room = 224 - [...tail].reduce((sum, letter) => sum + widthOf(letter), 0)
+    track += `<text x="${shape.left}" y="${shape.top - 14}" ${SANS} font-size="11" fill="${C.muted}">${esc(fit(here.branch, room))}${tail}</text>`
   } else {
     const capX = lanes.length > 0 ? shape.right : L.caption.x
     const capY = lanes.length > 0 ? shape.top - 14 : L.caption.y
@@ -288,16 +307,18 @@ export function drawBoard(b: Board, isWide: boolean, names: TrackNames, now: num
     track += `<text x="${capX}" y="${capY}"${capAnchor} ${SANS} font-size="11" fill="${C.muted}">${here === undefined ? (repo === undefined ? 'Reading the repository…' : repo.kind === 'blocked' ? `Git did not run: ${esc(short(repo.why, isWide ? 50 : 36))}` : repo.why === undefined ? 'No git repository in this folder' : `Git said: ${esc(short(repo.why, isWide ? 50 : 34))}`) : lanes.length > 0 ? `${lanes.length} tracks · ${esc(short(here.branch, 30))}${marker === '' ? '' : ` · ${marker}`}` : here.staging === undefined ? 'Release track' : esc(short(here.staging.subject, isWide ? 46 : 34))}</text>`
   }
 
-  const headY = isWide ? 16 : 24
+  // In the wide layout the count stops short of the lanes column.
   const head =
-    `<text x="16" y="${headY}" ${SANS} font-size="11" font-weight="600" letter-spacing="0.6" fill="${C.muted}">NOW</text>` +
-    `<text x="${L.w - 16}" y="${headY}" text-anchor="end" ${MONO} font-size="11" fill="${C.muted}">${b.calls} tool call${b.calls === 1 ? '' : 's'} this turn</text>`
+    `<text x="16" y="28" ${SANS} font-size="11" font-weight="600" letter-spacing="0.6" fill="${C.muted}">NOW</text>` +
+    `<text x="${isWide ? 630 : L.w - 16}" y="28" text-anchor="end" ${MONO} font-size="11" fill="${C.muted}">${b.calls} tool call${b.calls === 1 ? '' : 's'} this turn</text>`
 
   const H = lanes.length === 0 || isWide ? L.h : Math.max(L.h, laneHeight(lanes.length, shape))
 
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${L.w} ${H}" width="${L.w}" height="${H}">` +
+    `<defs><pattern id="sb-dots" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="12" cy="12" r="1" fill="${C.dot}"/></pattern></defs>` +
     `<rect width="${L.w}" height="${H}" rx="12" fill="${C.canvas}"/>` +
+    `<rect width="${L.w}" height="${H}" rx="12" fill="url(#sb-dots)"/>` +
     head + wires + wire(L.merge, flow) + (lanes.length > 0 ? '' : wire(L.route, flow)) + core + chips + pins + tag + track +
     `</svg>`
   )

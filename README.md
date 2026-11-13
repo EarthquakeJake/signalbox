@@ -105,7 +105,7 @@ Both spellings above are read, so a file written for something else often works 
 
 Everything else in the file is ignored. All four settings above are ignored once a track file is found: the file decides.
 
-Where a branch's name matches no lane's pattern — the branches the desktop app names for you, say — Signalbox asks git which files that branch changed since it left the trunk and places it in the lane owning most of them. Every such branch counts towards its lane, up to twelve of them, so a lane's number covers branches of any name. The branch you are on lights its lane with `lane from files` beside the branch name, so you know it was worked out rather than declared. When it cannot be worked out, the caption says so instead of going quiet: `no lane in files` when none of the changed files belongs to a lane, and `lanes tied in files` when two lanes own the same number, since a coin flip is not shown as an answer. Each branch costs one diff, kept until the branch or the trunk moves, and it all needs `paths` on the lanes. Where a lane has an `id` and a tag `uat-passed/<id>` sits on the very commit its staging stands at, the lane is marked as having passed its checks.
+Where a branch's name matches no lane's pattern — the branches the desktop app names for you, say — Signalbox asks git which files that branch changed since it left the trunk and places it in the lane owning most of them. Every such branch counts towards its lane, up to twelve of them, so a lane's number covers branches of any name. A branch already merged into the trunk is not counted. The branch you are on lights its lane with `lane from files` beside the branch name, so you know it was worked out rather than declared. When it cannot be worked out, the caption says so instead of going quiet: `no lane in files` when none of the changed files belongs to a lane, and `lanes tied in files` when two lanes own the same number, since a coin flip is not shown as an answer. Each branch costs one diff, kept until the branch or the trunk moves, and it all needs `paths` on the lanes. Where a lane has an `id` and a tag `uat-passed/<id>` sits on the very commit its staging stands at, the lane is marked as having passed its checks.
 
 ## What it reads, and what it does not
 
@@ -125,7 +125,7 @@ It makes no network requests of its own, and calls no model. It never changes or
 
 ## Status
 
-Version 0.6.3, an early release. Both layouts have been rendered and looked at, with lanes and without. Built and tried on Claude Code 2.1.321 in the desktop app on Windows. Other surfaces are covered by the mod's tests but have not been tried by hand. The test engine serves no processes, so the git reading is covered by its failing case alone and was checked by hand in a real repository.
+Version 0.7.0, an early release. Both layouts have been rendered and looked at, with lanes and without. Built and tried on Claude Code 2.1.321 in the desktop app on Windows. Other surfaces are covered by the mod's tests but have not been tried by hand. The test engine serves no processes, so the git reading is covered by its failing case alone and was checked by hand in a real repository.
 
 ## Development
 
