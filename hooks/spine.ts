@@ -1,6 +1,6 @@
 import type { Board, Lane, OpenBranch, StationId } from '../types'
 import { NAMES } from './draw'
-import { C, FAR_BEHIND, STALE_DAYS, STATION_TONE, TONE, agoOf, branchIn, esc, fit, fitMono, laneColours, laneTile, line, monoWidth, stagingWords, text, widthOf } from './lanes'
+import { C, FAR_BEHIND, STALE_DAYS, STATION_TONE, TONE, agoOf, branchIn, esc, fit, fitMono, isMadeUpName, laneColours, laneTile, line, monoWidth, stagingWords, text, widthOf } from './lanes'
 import type { Piece } from './lanes'
 
 // The spine view: the trunk as one line, every open branch joined to it where
@@ -67,22 +67,35 @@ function pick(items: Item[], most: number): Item[] {
 /** `app-v3.14.0` reads as `3.14.0`: the lane's word and a leading `v` come off, the title already names the lane. */
 const tagWords = (tag: string): string => tag.replace(/^[A-Za-z][A-Za-z_]*[-/]/, '').replace(/^v(?=\d)/, '')
 
-/** The few words under an open branch's name: how far ahead, its lane, and a warning where one applies. */
+/**
+ * The few words under an open branch's lead line: how far ahead, a warning where
+ * one applies, then its commit subject (when the name, not the subject, led) or its lane.
+ */
 function branchPieces(item: Item, now: number): Piece[] {
   const b = item.b
+  const subject = b.subject?.trim() ?? ''
+  const tail = subject !== '' && !isMadeUpName(b.name) ? subject : item.lane?.name ?? 'no lane'
   return [
     { words: `+${b.ahead}`, fill: C.muted },
-    { words: ` · ${item.lane?.name ?? 'no lane'}`, fill: C.muted },
     ...(isFar(b) ? [{ words: ` · ${b.behind} behind`, fill: TONE.danger.ink }] : isStale(b, now) ? [{ words: ' · stale', fill: TONE.warn.ink }] : []),
+    { words: ` · ${tail}`, fill: C.muted },
   ]
 }
 
-/** An open branch's card: its lane's tile, its name, and how it stands. */
+/**
+ * An open branch's card: its lane's tile, then its name, or for a made-up name
+ * its commit subject, and how it stands.
+ */
 function branchCard(item: Item, x: number, y: number, w: number, now: number): string {
+  const subject = item.b.subject?.trim() ?? ''
+  const lead =
+    subject !== '' && isMadeUpName(item.b.name)
+      ? text(x + 38, y + 19, esc(fit(subject, w - 46)), { fill: C.text })
+      : text(x + 38, y + 19, esc(branchIn(item.b.name, w - 46)), { font: 'mono', fill: C.text })
   return (
     `<rect x="${x + 0.5}" y="${y + 0.5}" width="${w - 1}" height="43" rx="9.5" fill="${C.node}" stroke="${C.nodeLine}"/>` +
     laneTile(item.lane ?? LOOSE, x + 8, y + 11, 22, item.colour) +
-    text(x + 38, y + 19, esc(branchIn(item.b.name, w - 46)), { font: 'mono', fill: C.text }) +
+    lead +
     line(x + 38, y + 35, branchPieces(item, now), w - 46)
   )
 }
@@ -101,18 +114,36 @@ function workWords(b: Board, here: Here, isShort: boolean): string {
   return b.edited.length > 0 ? `${b.edited.length} edited · ${isShort ? '' : 'all '}committed` : 'nothing to commit'
 }
 
-/** The releases to list: your lane's, else the first lane with any, else the trunk's newest tag. */
-function releasesOf(here: Here): { title: string; rows: Array<{ name: string; at?: number }> } {
+/** One release to list: its tag, when it was made, whether it is live, and the words beside it. */
+type Release = { name: string; at?: number; isLive: boolean; note: string }
+
+/**
+ * The releases to list. In a lane, that lane's own, newest first, the newest
+ * live. In no lane (on the trunk, say), what is live in every lane, each named
+ * by its lane. With no lanes at all, the trunk's newest tag.
+ */
+function releasesOf(here: Here): { title: string; rows: Release[] } {
   const lanes = here.lanes ?? []
-  const lane = [yourLane(here), ...lanes].find(l => l !== undefined && ((l.releases ?? []).length > 0 || l.live !== undefined))
-  if (lane !== undefined) {
-    const rows = (lane.releases ?? []).length > 0 ? (lane.releases ?? []).slice(0, 4) : [{ name: lane.live as string }]
+  const lane = yourLane(here)
+  if (lane !== undefined && ((lane.releases ?? []).length > 0 || lane.live !== undefined)) {
+    const tags = (lane.releases ?? []).length > 0 ? (lane.releases ?? []).slice(0, 4) : [{ name: lane.live as string }]
+    const rows = tags.map((r, at) => ({ name: r.name, at: 'at' in r ? r.at : undefined, isLive: at === 0, note: at === 0 ? 'live' : '' }))
     // A lane already named for its releases keeps its name alone, rather than `Release releases`.
     return { title: /release/i.test(lane.name) ? lane.name : `${lane.name} releases`, rows }
   }
+  const live = lanes.filter(l => (l.releases ?? []).length > 0 || l.live !== undefined).slice(0, 4)
+  if (live.length > 0) {
+    return {
+      title: 'Live releases',
+      rows: live.map(l => ({ name: l.releases?.[0]?.name ?? (l.live as string), at: l.releases?.[0]?.at, isLive: true, note: l.name })),
+    }
+  }
 
-  return here.tag === undefined ? { title: '', rows: [] } : { title: 'Releases', rows: [{ name: here.tag }] }
+  return here.tag === undefined ? { title: '', rows: [] } : { title: 'Releases', rows: [{ name: here.tag, isLive: true, note: 'live' }] }
 }
+
+/** The words beside a release's pill: its note, then its age. */
+const releaseWords = (r: Release, now: number): string => [r.note, r.at === undefined ? '' : agoOf(r.at, now)].filter(w => w !== '').join(' · ')
 
 /** A pill starting at `x`, centred on `cy`; returns the drawing and where it ends. */
 function pillAt(x: number, cy: number, words: string, isLive: boolean): { svg: string; right: number } {
@@ -213,7 +244,8 @@ function stagingCard(lane: Lane | undefined, staging: NonNullable<Lane['staging'
   return (
     `<rect x="${x + 0.5}" y="${y + 0.5}" width="${w - 1}" height="39" rx="9.5" fill="rgba(201,139,94,0.14)" stroke="rgba(201,139,94,0.55)"/>` +
     text(x + 10, y + 17, esc(fit(lane === undefined ? 'On staging' : `On staging · ${lane.name}`, w - 20)), { fill: C.hl }) +
-    text(x + 10, y + 32, esc(fitMono(words.news === '' ? `since ${words.when}` : `since ${words.when} · ${words.news}`, w - 20)), { font: 'mono' })
+    // Staging the same as live says so, rather than an age a reader could take for live being out of date.
+    text(x + 10, y + 32, esc(fitMono(lane?.isStagingLive === true ? 'same as live' : words.news === '' ? `since ${words.when}` : `since ${words.when} · ${words.news}`, w - 20)), { font: 'mono' })
   )
 }
 
@@ -309,12 +341,12 @@ function tallSpine(b: Board, here: Here, now: number): string {
     ry += 8
     body += label(rightX, ry + 4, fit(rel.title, rightW, 11, 600))
     ry += 22
-    // The newest is the live one: its pill is silk, and `live` goes with its age beside it, where there is room.
-    rel.rows.forEach((r, at) => {
-      const p = pillAt(rightX, ry, fitMono(tagWords(r.name), rightW - 90), at === 0)
+    // A live release's pill is silk; beside it go `live` (or its lane, when every lane's is listed) and its age.
+    rel.rows.forEach(r => {
+      const p = pillAt(rightX, ry, fitMono(tagWords(r.name), rightW - 90), r.isLive)
       body += p.svg
-      const when = [at === 0 ? 'live' : '', r.at === undefined ? '' : agoOf(r.at, now)].filter(w => w !== '').join(' · ')
-      if (when !== '') body += text(p.right + 8, ry + 4, esc(fit(when, W - 16 - p.right - 8)), { fill: at === 0 ? C.text : C.muted })
+      const when = releaseWords(r, now)
+      if (when !== '') body += text(p.right + 8, ry + 4, esc(fit(when, W - 16 - p.right - 8)), { fill: r.isLive ? C.text : C.muted })
       ry += 28
     })
     ry -= 14
@@ -352,8 +384,6 @@ function tallSpine(b: Board, here: Here, now: number): string {
     foot += legendItem(fx, fy, words, ink, kind).svg
     fx += w
   }
-  fy += 20
-  foot += text(left, fy, `Forks are placed by commits behind main: each doubling is ${SPINE_STEP} px.`)
   if (here.merged !== undefined) {
     fy += 26
     foot += `<g transform="translate(${left} ${fy - 12}) scale(0.6667)" fill="none" stroke="${C.muted}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/></g>`
@@ -428,12 +458,12 @@ function wideSpine(b: Board, here: Here, now: number): string {
     body += label(rx, 260, title)
     // Capitals with letter spacing run wider than the table's lower case; the gap allows for it.
     rx += widthOf(title.toUpperCase(), 11, 600) * 1.08 + 0.6 * title.length + 16
-    for (const [at, r] of rel.rows.entries()) {
+    for (const r of rel.rows) {
       const words = tagWords(r.name)
-      const when = [at === 0 ? 'live' : '', r.at === undefined ? '' : agoOf(r.at, now)].filter(w => w !== '').join(' · ')
+      const when = releaseWords(r, now)
       const need = monoWidth(words) + 20 + (when === '' ? 0 : widthOf(when) + 8)
       if (rx + need > W - 16) break
-      const p = pillAt(rx, 256, words, at === 0)
+      const p = pillAt(rx, 256, words, r.isLive)
       body += p.svg
       if (when !== '') body += text(p.right + 8, 260, esc(when))
       rx = p.right + (when === '' ? 0 : widthOf(when) + 8) + 12
@@ -453,7 +483,7 @@ function wideSpine(b: Board, here: Here, now: number): string {
   const merged = here.merged === undefined || here.merged === 0 ? '' : ` · ${here.merged} merged`
   const head =
     label(16, 28, `${items.length} open ${items.length === 1 ? 'branch' : 'branches'}${more > 0 ? ` · ${more} not shown` : ''}`) +
-    text(W - 16, 28, esc(`main, newest at the right · ${SPINE_STEP * 1.4} px per doubling${merged}`), { anchor: 'end' })
+    text(W - 16, 28, esc(`main, newest at the right${merged}`), { anchor: 'end' })
   return frame(W, H, head + spine + wires + body + dots)
 }
 

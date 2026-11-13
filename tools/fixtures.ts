@@ -267,4 +267,49 @@ export const FIXTURES: Fixture[] = [
       })),
     }),
   }),
+  make('descriptions', 'Branch descriptions from commit subjects, and staging the same as live', {
+    ...busy,
+    repo: repoOf({
+      branch: 'claude/upbeat-volhard-48eb37',
+      behind: 91,
+      merged: 4,
+      loose: [{ name: 'claude/vigorous-khayyam-da3b47', ahead: 4, behind: 91, updatedAt: NOW - 26 * H, subject: 'Draft the review plan for the pricing page' }],
+      lanes: [
+        {
+          id: 'app', name: 'App', branches: 2, isHere: false, live: 'app-v3.14.0', isStagingLive: true,
+          staging: { updatedAt: NOW - 30 * H, subject: 'UAT', behind: 8 },
+          releases: [{ name: 'app-v3.14.0', at: NOW - 4.5 * H }],
+          open: [
+            { name: 'claude/wonderful-mcclintock-4a2b', ahead: 3, behind: 2, updatedAt: NOW - 3 * H, subject: 'Timeline: keep the scroll position when a filter changes' },
+            { name: 'app/offline-sync', ahead: 6, behind: 40, updatedAt: NOW - 20 * 24 * H, subject: 'Queue writes while offline and replay them in order' },
+          ],
+        },
+        {
+          id: 'website', name: 'Website', branches: 1, isHere: true, isGuessed: true, byFiles: 1, live: 'site-2026-11-13', isStagingLive: true, hasYours: false,
+          staging: { updatedAt: NOW - 30 * H, subject: 'UAT', behind: 8 },
+          releases: [{ name: 'site-2026-11-13', at: NOW - 4.5 * H }],
+          open: [{ name: 'claude/upbeat-volhard-48eb37', ahead: 2, behind: 91, updatedAt: NOW - H, subject: 'Landing: untangle the hero and the pricing table', isByFiles: true }],
+        },
+        { id: 'platform', name: 'Platform', branches: 1, isHere: false, open: [{ name: 'platform/branch-prefix', ahead: 1, behind: 0, updatedAt: NOW - 26 * H, subject: 'Name branches by lane prefix' }] },
+        { id: 'cloud', name: 'Cloud trial', branches: 1, isHere: false, isParked: true, open: [{ name: 'codex/private-alpha', ahead: 17, behind: 111, updatedAt: NOW - 20 * 24 * H, subject: 'Private alpha: invite-only sign-up' }] },
+      ],
+    }),
+  }, { staging: 'UAT', live: 'Live' }),
+  make('trunk-releases', 'On main in no lane: what is live in every lane', {
+    ...calm,
+    repo: repoOf({
+      branch: 'main',
+      trunk: undefined,
+      ahead: 0,
+      dirty: 0,
+      unpushed: 0,
+      merged: 4,
+      lanes: [
+        { id: 'app', name: 'App', branches: 0, isHere: false, open: [], live: 'app-v3.14.0', releases: [{ name: 'app-v3.14.0', at: NOW - 4.5 * H }, { name: 'app-v3.12.0', at: NOW - 26 * H }] },
+        { id: 'website', name: 'Website', branches: 0, isHere: false, open: [], live: 'site-2026-11-13', releases: [{ name: 'site-2026-11-13', at: NOW - 4.5 * H }] },
+        { id: 'platform', name: 'Platform', branches: 1, isHere: false, open: [{ name: 'platform/branch-prefix', ahead: 1, behind: 0, updatedAt: NOW - 26 * H }] },
+        { id: 'release', name: 'Release', branches: 0, isHere: false, open: [], live: 'v0.12.0', releases: [{ name: 'v0.12.0', at: NOW - 20 * 60000 }] },
+      ],
+    }),
+  }),
 ]

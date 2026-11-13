@@ -79,6 +79,8 @@ export function stagingWords(lane: Lane, now: number): { when: string; news: str
   const when = agoOf(lane.staging.updatedAt, now)
   if (lane.hasYours === true) return { when, news: 'yours', tone: C.text }
   if (lane.hasYours === false && lane.isHere) return { when, news: 'not yet', tone: C.muted }
+  // Staging that holds exactly what is live is not out of date, however far its branch sits from the trunk.
+  if (lane.isStagingLive === true) return { when, news: 'same as live', tone: C.muted }
   if (lane.staging.behind > 0) return { when, news: `${lane.staging.behind} behind`, tone: C.hl }
   if (lane.isPassed === true) return { when, news: 'passed', tone: C.accent }
 
@@ -178,14 +180,18 @@ const flagsOf = (b: OpenBranch, now: number): Array<{ words: string; tone: 'warn
 
 export type Piece = { words: string; fill: string }
 
-/** A line of pieces, each with its colour: whole pieces while they fit, the first one cut if it must be. */
+/**
+ * A line of pieces, each with its colour: whole pieces while they fit. The piece
+ * that overflows is cut to the room left, when it is the first or the room is
+ * enough for a few words (40 px); otherwise it and the rest are left off.
+ */
 export function line(x: number, y: number, pieces: Piece[], most: number): string {
   let used = 0
   let out = ''
   for (const [at, p] of pieces.entries()) {
     const w = widthOf(p.words)
     if (used + w > most) {
-      if (at === 0) out += `<tspan fill="${p.fill}">${esc(fit(p.words, most))}</tspan>`
+      if (at === 0 || most - used >= 40) out += `<tspan fill="${p.fill}">${esc(fit(p.words, most - used))}</tspan>`
       break
     }
     out += `<tspan fill="${p.fill}">${esc(p.words)}</tspan>`
@@ -198,9 +204,48 @@ export function line(x: number, y: number, pieces: Piece[], most: number): strin
 /** The words under a lane's name about its staging. */
 function stagingPieces(lane: Lane, now: number, stagingName: string): Piece[] {
   if (lane.isParked === true) return [{ words: lane.staging === undefined ? 'Set aside' : `Set aside · ${stagingName} ${agoOf(lane.staging.updatedAt, now)}`, fill: C.muted }]
-  if (lane.staging === undefined) return [{ words: `No ${stagingName.toLowerCase()} yet`, fill: TONE.warn.ink }]
+  // A staging name in capitals (UAT) keeps them; a word (Staging) goes lower case in the middle of the line.
+  if (lane.staging === undefined) return [{ words: `No ${/^[A-Z0-9]+$/.test(stagingName) ? stagingName : stagingName.toLowerCase()} yet`, fill: TONE.warn.ink }]
+  // Staging the same as live says so in place of its age: "UAT · same as live", with your branch's news after.
+  if (lane.isStagingLive === true) {
+    const yours = lane.hasYours === true ? ' · yours' : lane.hasYours === false && lane.isHere ? ' · not yet' : ''
+    return [{ words: `${stagingName} · same as live`, fill: C.muted }, ...(yours === '' ? [] : [{ words: yours, fill: lane.hasYours === true ? C.text : C.muted }])]
+  }
   const words = stagingWords(lane, now)
   return [{ words: `${stagingName} ${words.when}`, fill: C.muted }, ...(words.news === '' ? [] : [{ words: ` · ${words.news}`, fill: words.tone }])]
+}
+
+/**
+ * True for a branch name a tool made up, such as `claude/upbeat-volhard-48eb37`:
+ * its last part ends in a hex tag with a figure in it. Such names say nothing
+ * about the work, so its newest commit's subject stands in for it where there is one.
+ */
+export const isMadeUpName = (name: string): boolean => {
+  const tail = /[-_]([0-9a-f]{4,10})$/i.exec(name)?.[1]
+  return tail !== undefined && /\d/.test(tail)
+}
+
+/**
+ * An open branch on one line from `x`, in `room` pixels at baseline `y`: a made-up
+ * name gives way to its commit subject; a chosen name stays, with the subject after
+ * it in muted type where there is room. The ahead count follows the lead words.
+ */
+export function branchWords(b: OpenBranch, x: number, y: number, room: number): string {
+  const ahead = `+${b.ahead}`
+  const aheadW = monoWidth(ahead) + 8
+  const subject = b.subject?.trim() ?? ''
+  if (subject !== '' && isMadeUpName(b.name)) {
+    const lead = fit(subject, room - aheadW)
+    return text(x, y, esc(lead), { fill: C.text }) + text(x + widthOf(lead) + 8, y, ahead, { font: 'mono' })
+  }
+  const nameRoom = subject === '' ? room - aheadW : Math.max(room * 0.55, Math.min(room - aheadW, 120))
+  const shown = branchIn(b.name, nameRoom - aheadW)
+  let out = text(x, y, esc(shown), { font: 'mono', fill: C.text }) + text(x + monoWidth(shown) + 8, y, ahead, { font: 'mono' })
+  const after = x + monoWidth(shown) + aheadW + 4
+  const left = x + room - after
+  if (subject !== '' && left >= 48) out += text(after, y, esc(fit(subject, left)))
+
+  return out
 }
 
 /**
@@ -242,11 +287,8 @@ export function laneCard(lane: Lane, top: number, now: number, colour: string, s
       out += p.svg
       edge = p.left - 6
     }
-    const ahead = `+${b.ahead}`
-    const shown = branchIn(b.name, edge - 4 - 64 - monoWidth(ahead) - 8)
     out += `<circle cx="56" cy="${mid}" r="2.5" fill="${colour}"/>`
-    out += text(64, mid + 4, esc(shown), { font: 'mono', fill: C.text })
-    out += text(64 + monoWidth(shown) + 8, mid + 4, ahead, { font: 'mono' })
+    out += branchWords(b, 64, mid + 4, edge - 4 - 64)
   })
   if (more > 0 && open.length > 0) out += text(64, top + 60 + open.length * 18, `+${more} more`)
 
