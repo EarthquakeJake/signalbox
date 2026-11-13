@@ -6,8 +6,6 @@ The design reference is the **Refined board** page of the Release map canvas: ht
 
 | Track | Work | Branch |
 | --- | --- | --- |
-| Data | **Lane check per turn, the data:** `Lane.paths`, `Repo.root`, `Repo.mismatch` (the branch's name says one lane, its files another). | `data/lane-check` |
-| Board | **Lane check per turn, drawn:** the edit tag names the lane this turn's edits fall in ("4 edits · Website"), and turns amber when one turn spans two lanes or the branch's name and files disagree. | `board/lane-check` |
 
 ## Next
 
@@ -27,6 +25,7 @@ The design reference is the **Refined board** page of the Release map canvas: ht
 
 ## Done
 
+- 0.17.0: lane check per turn. The edit tag names the lane a turn's edits fall in, and turns amber when they span lanes or the branch's name and files disagree; a session in a subfolder now sees its lanes.
 - 0.16.2: the tall spine fills the pane's width and scrolls, instead of shrinking to the pane's height into a narrow strip.
 - 0.16.1: fixes from the first live check on Silkscreen. Routine overlaps judged by every branch's lane, not the listed four; likely conflicts tested first, so they show on the first refresh; "You are on main" on the trunk; one staging wording in both views; whole names in the spine's clash list; "+N more" on the spine; no counts touching chip names.
 - 0.16.0: conflict signals. Red for branches git would not merge cleanly, amber for shared files across lanes or with uncommitted work, routine same-file overlaps within a lane folded into one quiet line; on branches, your branch, a summary and the tall spine's foot.

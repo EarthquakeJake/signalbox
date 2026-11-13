@@ -63,6 +63,10 @@ Signalbox warns early when two pieces of open work are heading for each other, s
 
 The marks sit on the branches themselves, on your own branch, and in a one-line summary ("1 conflict · 2 overlaps") that is absent when all is clean. The tall spine lists every clash at its foot.
 
+## Lane check per turn
+
+The tag that counts this turn's edits also names the lane they fall in, by the track file's paths: "3 files · Website · uncommitted". It turns amber when one turn's edits span two lanes ("edits span App and Website"), or when the branch you are on is named for one lane while its changes belong to another ("named App, files are Website"), the kind of mix-up a project's own checks tend to reject later. The spine's "You are on" line says the same.
+
 ## Two views
 
 - **The board** (`/signalbox board`, the default): Claude, its tools, and the lanes.
@@ -140,7 +144,7 @@ It makes no network requests of its own, and calls no model. It never changes or
 
 ## Status
 
-Version 0.16.2, an early release. Both layouts have been rendered and looked at, with lanes and without. Built and tried on Claude Code 2.1.321 in the desktop app on Windows. Other surfaces are covered by the mod's tests but have not been tried by hand. The test engine serves no processes, so the git reading is covered by its failing case alone and was checked by hand in a real repository.
+Version 0.17.0, an early release. Both layouts have been rendered and looked at, with lanes and without. Built and tried on Claude Code 2.1.321 in the desktop app on Windows. Other surfaces are covered by the mod's tests but have not been tried by hand. The test engine serves no processes, so the git reading is covered by its failing case alone and was checked by hand in a real repository.
 
 ## Development
 
