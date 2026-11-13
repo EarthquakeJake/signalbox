@@ -144,6 +144,20 @@ async function refresh($: EngineInterface, isForced: boolean): Promise<void> {
   }
 }
 
+/**
+ * Which board a pane gets, from its body's size in cells. A text cell is about
+ * twice as tall as it is wide: the pane is wide when it is clearly broader than
+ * it is high, and at least 90 cells across so the wide board is not shrunk past
+ * reading. The answer depends on the size alone, never on what was drawn before.
+ *
+ * The host re-runs the pane's render hook when its width changes, once the
+ * resize settles, but not when only its height changes: then this is asked
+ * again only at the board's next redraw (a tool call, a step, a turn's end).
+ */
+export function isWidePane(columns: number, rows: number): boolean {
+  return columns >= 90 && columns > rows * 2 * 1.6
+}
+
 export const register: Register = (on, options) => {
   asked = typeof options?.trunkBranch === 'string' ? options.trunkBranch.trim() : ''
   stagingPath = typeof options?.stagingPath === 'string' ? options.stagingPath.trim() : ''
@@ -257,10 +271,7 @@ export const register: Register = (on, options) => {
       return <Box flexDirection="column">{feed}</Box>
     }
 
-    // A text cell is about twice as tall as it is wide: the pane is wide when it is clearly broader than it is high.
-    const across = e.props.bodyColumns
-    const room = e.props.scroll.bodyRows
-    const isWide = across >= 90 && across > room * 2 * 1.6
+    const isWide = isWidePane(e.props.bodyColumns, e.props.scroll.bodyRows)
     const { Svg } = $.ui.resolve(e)
     const running = [...state.rows].reverse().find(r => r.status === 'run')
     const alt = `${TITLE}. ${running !== undefined ? `${NAMES[running.station]}: ${running.label}` : state.isWorking ? 'Thinking' : 'Waiting for you'}`
