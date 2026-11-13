@@ -19,7 +19,7 @@ Signalbox is a mod for Claude Code (a plugin that adds a pane). It runs locally.
 
   A stop lights up when there is work of yours sitting at it.
 
-- **Or one lane per deployable part**, where the project declares them in a track file. Each lane is a row: its name and what is live on it, then its open branches and its staging, all hung off one bus. The lane you are working in is the lit one.
+- **Or one lane per deployable part**, where the project declares them in a track file. Each lane is a row: its name and what is live on it, then its open branches and its staging, all hung off one bus. The lane you are working in is the lit one, and where a lane's staging is a branch, it says whether the branch you are on has reached it yet.
 - **A short feed.** The last four actions, under the board.
 
 ## Two layouts, chosen for you
@@ -58,7 +58,8 @@ Start a new session afterwards. The pane opens by itself; `/signalbox` opens it 
 | Setting | Default | What it does |
 | --- | --- | --- |
 | `stagingName` | `Staging` | The name of the middle stop, such as Staging, UAT or Preview. |
-| `stagingPath` | empty | A folder on the trunk whose newest commit means staging was updated, such as `public/uat`. Left empty, the track shows what is uncommitted instead of a staging stop. |
+| `stagingBranch` | empty | A branch that is your staging, such as `uat/site`. Tried as given and as `origin/<name>`, and preferred over the folder below. |
+| `stagingPath` | empty | A folder on the trunk whose newest commit means staging was updated, such as `public/uat`. Left empty, and with no staging branch, the track shows what is uncommitted instead of a staging stop. |
 | `liveName` | `Live` | The name of the last stop, such as Live or Production. |
 | `trunkBranch` | empty | The branch your work is measured against, such as `main`, `master` or `develop`. Left empty, Signalbox asks the remote which branch is its default and falls back to `main` or `master`. |
 
@@ -101,7 +102,7 @@ Both spellings above are read, so a file written for something else often works 
 | `tag` or `live.tagPrefix` | The start of this lane's release tags, so the newest one can be shown. |
 | `parked` | Draws the lane set back, as one not in play. |
 
-Everything else in the file is ignored. Where a lane has an `id` and a tag `uat-passed/<id>` sits on the very commit its staging stands at, the lane is marked as having passed its checks.
+Everything else in the file is ignored. All four settings above are ignored once a track file is found: the file decides. Where a lane has an `id` and a tag `uat-passed/<id>` sits on the very commit its staging stands at, the lane is marked as having passed its checks.
 
 ## What it reads, and what it does not
 
@@ -119,7 +120,7 @@ It makes no network requests of its own, reads no files, and calls no model. It 
 
 ## Status
 
-Version 0.4.0, an early release. Built and tried on Claude Code 2.1.321 in the desktop app on Windows. Other surfaces are covered by the mod's tests but have not been tried by hand. The test engine serves no processes, so the git reading is covered by its failing case alone and was checked by hand in a real repository.
+Version 0.5.0, an early release. Built and tried on Claude Code 2.1.321 in the desktop app on Windows. Other surfaces are covered by the mod's tests but have not been tried by hand. The test engine serves no processes, so the git reading is covered by its failing case alone and was checked by hand in a real repository.
 
 ## Development
 

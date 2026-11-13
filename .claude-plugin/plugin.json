@@ -1,6 +1,6 @@
 {
   "name": "signalbox",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "A live circuit board beside the chat: Claude sits in the middle, its tools are pins that light up as they are used, and the work is wired into your release tracks, read from git. Switches between a tall and a wide layout by itself.",
   "author": {
     "name": "EarthquakeJake",
@@ -26,6 +26,12 @@
       "title": "Name of the staging stage",
       "default": "Staging",
       "description": "What the middle stop of the release track is called in your project, such as Staging, UAT or Preview."
+    },
+    "stagingBranch": {
+      "type": "string",
+      "title": "Staging branch",
+      "default": "",
+      "description": "A branch that is your staging, such as uat/site. Tried as given and as origin/<name>. Takes precedence over the staging folder, and both are ignored once a track file is found."
     },
     "stagingPath": {
       "type": "string",

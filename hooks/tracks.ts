@@ -16,6 +16,17 @@ async function git($: EngineInterface, argv: readonly string[], cwd: string): Pr
   }
 }
 
+/** For the git questions whose answer is the exit code rather than the output. */
+async function asks($: EngineInterface, argv: readonly string[], cwd: string): Promise<boolean | undefined> {
+  try {
+    const ran = await $.process.run(['git', ...argv], { cwd, timeoutMs: 5000 })
+
+    return ran.exitCode === 0 ? true : ran.exitCode === 1 ? false : undefined
+  } catch {
+    return undefined
+  }
+}
+
 const text = (value: unknown): string => (typeof value === 'string' ? value.trim() : '')
 
 const list = (value: unknown): string[] => (Array.isArray(value) ? value.map(text).filter(one => one !== '') : [])
@@ -88,8 +99,11 @@ async function refOf($: EngineInterface, cwd: string, name: string): Promise<str
   return undefined
 }
 
+/** A ref as the repository holds it, exported so a single track can use it too. */
+export { refOf }
+
 /** When a ref, or a folder on the trunk, was last touched, and what the trunk has taken since. */
-async function stageOf($: EngineInterface, cwd: string, trunkRef: string, spec: TrackSpec, now: number): Promise<{ stage: Stage; sha: string } | undefined> {
+async function stageOf($: EngineInterface, cwd: string, trunkRef: string, spec: TrackSpec, now: number): Promise<{ stage: Stage; sha: string; ref: string } | undefined> {
   const named = spec.stagingBranch
   const ref = named === undefined ? trunkRef : await refOf($, cwd, named)
   if (ref === undefined) return undefined
@@ -107,6 +121,7 @@ async function stageOf($: EngineInterface, cwd: string, trunkRef: string, spec: 
 
   return {
     sha,
+    ref,
     stage: {
       updatedAt: Math.min(now, seconds * 1000),
       subject: parts.slice(2).join('\t').slice(0, 72),
@@ -139,6 +154,12 @@ export async function readLanes($: EngineInterface, cwd: string, trunkRef: strin
       if (stamped !== '') isPassed = stamped === found.sha
     }
 
+    // The question a lane answers for the branch you are on: has your work reached it?
+    let hasYours: boolean | undefined
+    if (found !== undefined && spec.stagingBranch !== undefined) {
+      hasYours = await asks($, ['merge-base', '--is-ancestor', 'HEAD', found.ref], cwd)
+    }
+
     lanes.push({
       name: spec.name,
       branches: mine.length,
@@ -147,6 +168,7 @@ export async function readLanes($: EngineInterface, cwd: string, trunkRef: strin
       ...(found === undefined ? {} : { staging: found.stage }),
       ...(live === undefined || live === '' ? {} : { live }),
       ...(isPassed === undefined ? {} : { isPassed }),
+      ...(hasYours === undefined ? {} : { hasYours }),
     })
   }
 

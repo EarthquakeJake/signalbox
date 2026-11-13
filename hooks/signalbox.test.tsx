@@ -89,7 +89,7 @@ test('declared lanes are drawn in place of the single track', async ($, on) => {
           dirty: 1,
           lanes: [
             { name: 'App', branches: 0, isHere: false, live: 'app-v3.14.0', staging: { updatedAt: 0, subject: 'UAT: same as live', behind: 0 }, isPassed: true },
-            { name: 'Site', branches: 3, isHere: true, live: 'site-2026-11-13', staging: { updatedAt: 0, subject: 'UAT: new landing', behind: 4 } },
+            { name: 'Site', branches: 3, isHere: true, live: 'site-2026-11-13', staging: { updatedAt: 0, subject: 'UAT: new landing', behind: 4 }, hasYours: false },
             { name: 'Cloud', branches: 1, isHere: false, isParked: true },
           ],
           },
@@ -102,7 +102,7 @@ test('declared lanes are drawn in place of the single track', async ($, on) => {
   const svg = JSON.stringify(await ui.find({ type: 'Svg' }))
   expect(svg).toContain('App')
   expect(svg).toContain('site-2026-11-13')
-  expect(svg).toContain('4 behind')
+  expect(svg).toContain('not yet')
   expect(svg).toContain('parked')
   expect(svg).toContain('3 tracks')
   await ui.unmount()

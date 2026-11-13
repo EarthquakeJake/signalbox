@@ -48,6 +48,8 @@ export type Lane = {
   live?: string
   /** Whether this lane's checks passed on what staging holds now. */
   isPassed?: boolean
+  /** Whether the branch you are on has already reached this lane's staging. */
+  hasYours?: boolean
   /** True for a lane the project has set aside. */
   isParked?: boolean
 }

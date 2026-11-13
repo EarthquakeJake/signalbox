@@ -1,7 +1,7 @@
 import type { EngineInterface } from 'claude-code'
 
 import type { Lane, Repo, Stage } from '../types'
-import { readLanes, readSpecs } from './tracks'
+import { readLanes, readSpecs, refOf } from './tracks'
 
 const NONE: Repo = { kind: 'none' }
 
@@ -48,8 +48,9 @@ async function trunkOf($: EngineInterface, cwd: string, asked: string): Promise<
  * folder, and how far the trunk has moved on since. A project whose staging is
  * a folder it publishes, rather than a branch, still has this.
  */
-async function stageOf($: EngineInterface, cwd: string, trunkRef: string, path: string, now: number): Promise<Stage | undefined> {
-  const line = said(await git($, ['log', '-1', '--format=%H%x09%ct%x09%s', trunkRef, '--', path], cwd))
+async function stageOf($: EngineInterface, cwd: string, trunkRef: string, path: string, now: number, isRef = false): Promise<Stage | undefined> {
+  const argv = isRef ? ['log', '-1', '--format=%H%x09%ct%x09%s', path] : ['log', '-1', '--format=%H%x09%ct%x09%s', trunkRef, '--', path]
+  const line = said(await git($, argv, cwd))
   if (line === '') return undefined
   const parts = line.split('\t')
   const sha = parts[0]
@@ -67,7 +68,7 @@ async function stageOf($: EngineInterface, cwd: string, trunkRef: string, path: 
 }
 
 /** Reads the branch picture: what is uncommitted, where this branch stands, and what the stages hold. */
-export async function readRepo($: EngineInterface, cwd: string, asked: string, stagingPath: string): Promise<Repo> {
+export async function readRepo($: EngineInterface, cwd: string, asked: string, stagingPath: string, stagingRef: string): Promise<Repo> {
   const status = await git($, ['status', '--porcelain=v2', '--branch'], cwd)
   if (status === undefined || status.exitCode !== 0) return NONE
 
@@ -105,6 +106,9 @@ export async function readRepo($: EngineInterface, cwd: string, asked: string, s
     const specs = await readSpecs($, cwd)
     if (specs.length > 0) {
       lanes = await readLanes($, cwd, trunkRef, specs, branch, now)
+    } else if (stagingRef !== '') {
+      const found = await refOf($, cwd, stagingRef)
+      if (found !== undefined) staging = await stageOf($, cwd, trunkRef, found, now, true)
     } else if (stagingPath !== '') {
       staging = await stageOf($, cwd, trunkRef, stagingPath, now)
     }
