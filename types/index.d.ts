@@ -77,6 +77,8 @@ export type Clash = {
 export type Lane = {
   /** The lane's id from the track file, where it has one; a stable key for its colour. */
   id?: string
+  /** The files this lane owns, as its track file's globs, so a turn's edits can be placed in it. */
+  paths?: string[]
   /** Its open branches, newest first, at most four. `branches` remains the full count. */
   open?: OpenBranch[]
   /** Its newest release tags with when each was made, newest first, at most four, for the spine view. */
@@ -137,6 +139,10 @@ export type Repo =
       merged?: number
       /** Open branches that belong to no lane, newest first, at most four, for the spine view. */
       loose?: OpenBranch[]
+      /** The repository's top folder, with forward slashes, so absolute paths of edited files can be made relative to it. */
+      root?: string
+      /** Where the branch you are on is named for one lane but its changed files point at another: both lane ids. */
+      mismatch?: { named: string; byFiles: string }
       /** Clashes among open branches and their worktrees' uncommitted work, worst first, at most eight. */
       clashes?: Clash[]
       /** The worst clash the branch you are on, with its uncommitted work, is part of. */
