@@ -4,13 +4,7 @@ The design reference is the **Refined board** page of the Release map canvas: ht
 
 ## Now
 
-| Track | Work | Branch |
-| --- | --- | --- |
-| Board | Refined design release 2: the tall release section. Your lane is drawn as three large stops (branch, staging, live) with labels underneath, and the other lanes are quiet rows under a hairline. Spec section 7. | `board/release-2` |
-| Board | Refined design release 3: the wide release section, with lane rows in the right column, and the feed drawn inside the wide board. Spec sections 8 and 9. Comes after release 2, in the same files. | `board/release-3` |
-| Board | **Lane cards, as in option 2** (Jake's priority). Each lane gets its own colour and icon tile, a status line ("Nothing in flight", "3 branches", "No staging yet"), its live tag as a pill, and its open branches listed under it with ahead and behind, and a "behind" or "stale" pill where it applies. A merged-branches summary sits at the foot. This replaces the spec's quiet grey rows. | `board/release-2` |
-| Data | Fill in `Lane.id`, `Lane.open` (each open branch's ahead, behind and last-commit time, newest first, at most four) and `Repo.merged`. | `data/lane-branches` |
-| Quality | A render harness in the repository: draw the board from fixture data to SVG and PNG, tall and wide, including the edge states, so any change can be looked at before release without borrowing another session's setup. | `quality/render-harness` |
+Nothing in progress. Releases 1 to 3 of the refined design and option 2's lane cards are done (0.7.0 to 0.10.0).
 
 ## Next
 
