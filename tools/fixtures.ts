@@ -390,10 +390,25 @@ FIXTURES.push(
     'clash-hidden-branch',
     'App pairs with a fifth branch the lane does not list, routine by Clash.lane; one overlap crosses lanes',
     [
-      // Data's Clash.lane, read here without the type: it says both branches share a lane, listed or not.
+      // Clash.lane says both branches share a lane, listed or not.
       ...pairs(['app/board-check', 'app/pins-tooltip', 'app/routing-order', 'app/hidden-fifth'], 'public/app/index.html').map(c => ({ ...c, lane: 'app' })),
       { a: 'platform/branch-prefix', b: 'app/hidden-fifth', level: 'overlap', files: ['hooks/tracks.ts'] },
-    ] as Clash[],
+    ],
+  ),
+  withClashes(
+    'clash-silkscreen-laned',
+    'Silkscreen read with Clash.lane: the conflict, five routine App pairs, and one App pair on two files',
+    [
+      { a: 'site/no-paid-mentions', b: 'claude/upbeat-volhard-48eb37', level: 'conflict', files: ['public/privacy/index.html', 'site/tools/make_legal.py', 'public/terms/index.html'], lane: 'site' },
+      ...pairs(['app/board-check', 'app/pins-tooltip', 'app/release-3.14.1', 'app/routing-order'], 'public/app/index.html')
+        .map(c => ({ ...c, lane: 'app' }))
+        // The one pair on two files is not routine, and stays amber.
+        .map(c => (c.a === 'app/release-3.14.1' && c.b === 'app/routing-order' ? { ...c, files: ['public/app/index.html', 'src/router.ts'] } : c)),
+    ],
+    {
+      app: [{ name: 'app/release-3.14.1', ahead: 4, behind: 3, updatedAt: NOW - 8 * H, subject: 'Release 3.14.1: the pins fix' }],
+      website: [{ name: 'site/no-paid-mentions', ahead: 2, behind: 20, updatedAt: NOW - 30 * H, subject: 'Legal: no paid mentions in the privacy and terms pages' }],
+    },
   ),
   withClashes(
     'clash-silkscreen',
