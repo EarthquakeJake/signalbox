@@ -1,7 +1,7 @@
 import type { Board, Lane, OpenBranch, StationId } from '../types'
 import { NAMES } from './draw'
 import {
-  C, FAR_BEHIND, STATION_TONE, TONE, WIDE_HEIGHT, agoOf, branchIn, clashInk, clashMark, clashOf, clashSummary, sharedFiles, stagingPieces, strongClashes, esc, fit, fitMono, frame, isMadeUpName,
+  C, FAR_BEHIND, turnLanes, STATION_TONE, TONE, WIDE_HEIGHT, agoOf, branchIn, clashInk, clashMark, clashOf, clashSummary, sharedFiles, stagingPieces, strongClashes, esc, fit, fitMono, frame, isMadeUpName,
   laneColours, laneTile, line as textLine, liveWords, monoWidth, text, widthOf,
 } from './lanes'
 import type { Piece } from './lanes'
@@ -147,7 +147,7 @@ function youAreOn(here: Here, laneNames: readonly string[]): { words: string; is
 const workWords = (here: Here): string => (here.dirty > 0 ? `${plural(here.dirty, 'file')} not committed` : 'nothing to commit')
 
 /** "You are on main · 3 files changed since the last commit", on one line in `w`, or two where `twoLines`. */
-function youLine(here: Here, laneNames: readonly string[], x: number, y: number, w: number, twoLines = false): string {
+function youLine(here: Here, laneNames: readonly string[], x: number, y: number, w: number, twoLines = false, lane?: string): string {
   const on = youAreOn(here, laneNames)
   const room = twoLines ? w - widthOf('You are on ', 12) : Math.min(220, w - widthOf('You are on ', 12) - 80)
   // branchIn measures mono at 11 px; this line is 12, so its room is scaled to match.
@@ -157,9 +157,19 @@ function youLine(here: Here, laneNames: readonly string[], x: number, y: number,
     return youHead(on, name, x, y) + text(x, y + 17, esc(fit(work.charAt(0).toUpperCase() + work.slice(1), w, 12)), { size: 12, fill: here.dirty > 0 ? C.text : C.muted })
   }
   const used = widthOf('You are on ', 12) + (on.isMono ? monoWidth(name, 12) : widthOf(name, 12))
+  // The lane this turn's edits fall in, then what is not committed; the latter gives way first.
   // A text's leading space is dropped when drawn, so the gap before the dot is placed, not typed.
-  const tail = fit(`· ${work}`, w - used - 4, 12)
-  return youHead(on, name, x, y) + (tail === '…' ? '' : text(x + used + 4, y, esc(tail), { size: 12, fill: here.dirty > 0 ? C.text : C.muted }))
+  const left = w - used - 4
+  // The git state shortens ("3 not committed") and then drops, rather than being cut.
+  const lead = lane === undefined ? '' : `· ${lane}`
+  const gap = lane === undefined ? '' : ' '
+  const workShort = here.dirty > 0 ? `${here.dirty} not committed` : 'nothing to commit'
+  const tail = [`${gap}· ${work}`, `${gap}· ${workShort}`].find(t => widthOf(`${lead}${t}`, 12) <= left)
+  const pieces: Piece[] = [
+    ...(lead === '' ? [] : [{ words: lead, fill: C.text }]),
+    ...(tail === undefined ? [] : [{ words: tail, fill: here.dirty > 0 ? C.text : C.muted }]),
+  ]
+  return youHead(on, name, x, y) + (left < 40 ? '' : textLine(x + used + 4, y, pieces, left, 12))
 }
 
 /** "You are on" and the name, as two texts so each is measured and drawn in its own face. */
@@ -241,12 +251,23 @@ function treeTall(b: Board, here: Here, now: number, stagingName: string): strin
   const laneNames = (here.lanes ?? []).map(l => l.name)
   // Claude's band: 122 px, the ring clear of the band's edges and of the hairline under it.
   let out = claudeBand(b, 16, 18, W - 32) + hair(16, 424, 144)
-  out += youLine(here, laneNames, 16, 170, W - 32)
-  // Your branch's clash, on its own line under where you are, in its tone; main moves down to make room.
+  // Where you are, with the lane this turn's edits fall in; a lane warning and your branch's clash each
+  // take a line of their own under it, in their tones, and main moves down to make room.
+  const turn = turnLanes(b.edited, here)
+  out += youLine(here, laneNames, 16, 170, W - 32, false, turn.warn === undefined ? turn.lanes[0] : undefined)
+  let below = 187
+  if (turn.warn !== undefined) {
+    out += `<circle cx="21" cy="${below - 4}" r="5.5" fill="${TONE.warn.ink}" fill-opacity="0.18"/><circle cx="21" cy="${below - 4}" r="3" fill="${TONE.warn.ink}"/>`
+    out += text(32, below, esc(fit(capital(turn.warn), W - 32 - 16, 12)), { size: 12, fill: TONE.warn.ink })
+    below += 16
+  }
   const yours = clashOf(here, here.branch, here.clash)
-  if (yours !== undefined) out += clashMark(21, 183, yours.level) + text(32, 187, esc(fit(capital(yours.words), W - 32 - 16, 12)), { size: 12, fill: yours.ink })
+  if (yours !== undefined) {
+    out += clashMark(21, below - 4, yours.level) + text(32, below, esc(fit(capital(yours.words), W - 32 - 16, 12)), { size: 12, fill: yours.ink })
+    below += 16
+  }
   const trunkX = 26
-  let y = yours === undefined ? 194 : 210
+  let y = 194 + (below - 187)
   out += `<circle cx="${trunkX}" cy="${y + 8}" r="9" fill="${C.canvas}" stroke="${C.accent}" stroke-width="2"/>`
   out += text(46, y + 13, 'main', { font: 'mono', size: 14, weight: 500, fill: C.text })
   // The clash summary on main's row, at the right: nothing when clean.
@@ -375,8 +396,19 @@ function wideLeft(b: Board, here: Here, laneNames: readonly string[], w: number)
   const on = youAreOn(here, laneNames)
   const name = on.isMono ? branchIn(on.words, ((w - widthOf('You are on ', 12)) * 11) / 12) : fit(on.words, w - widthOf('You are on ', 12), 12)
   out += youHead(on, name, 16, 192)
-  const work = here.dirty > 0 ? `${plural(here.dirty, 'file')} not committed` : 'Nothing to commit'
-  out += text(16, 209, esc(fit(work, w, 12)), { size: 12, fill: here.dirty > 0 ? C.text : C.muted })
+  // The second line: the lane this turn's edits fall in and what is not committed, or in amber the
+  // warning where they span lanes or the branch's name and files disagree.
+  const turn = turnLanes(b.edited, here)
+  const work = here.dirty > 0 ? `${here.dirty} not committed` : 'nothing to commit'
+  const plain = here.dirty > 0 ? `${plural(here.dirty, 'file')} not committed` : 'Nothing to commit'
+  const lane = turn.lanes[0]
+  const second =
+    turn.warn !== undefined && widthOf(capital(turn.warn), 12) <= w
+      ? { words: capital(turn.warn), fill: TONE.warn.ink }
+      : lane !== undefined && turn.warn === undefined && widthOf(`${lane} · ${work}`, 12) <= w
+        ? { words: `${lane} · ${work}`, fill: here.dirty > 0 ? C.text : C.muted }
+        : { words: plain, fill: here.dirty > 0 ? C.text : C.muted }
+  out += text(16, 209, esc(fit(second.words, w, 12)), { size: 12, fill: second.fill })
   // Your branch's clash, by its level alone, between where you are and the merged count.
   const yours = clashOf(here, here.branch, here.clash)
   if (yours !== undefined) {

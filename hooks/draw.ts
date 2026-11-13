@@ -1,5 +1,5 @@
 import type { Board, Lane, StationId } from '../types'
-import { C, STATION_TONE, WIDE_HEIGHT, clashMark, clashOf, clashSummary, strongClashes, frame, isMadeUpName, line, agoOf, branchIn, esc, fit, fitMono, laneCard, laneColours, laneLine, stagingWords, text, widthOf } from './lanes'
+import { C, STATION_TONE, TONE, WIDE_HEIGHT, monoWidth, turnLanes, clashMark, clashOf, clashSummary, strongClashes, frame, isMadeUpName, line, agoOf, branchIn, esc, fit, fitMono, laneCard, laneColours, laneLine, stagingWords, text, widthOf } from './lanes'
 
 export { fit }
 
@@ -478,15 +478,34 @@ export function drawBoard(b: Board, isWide: boolean, names: TrackNames, now: num
   const isWriting = wearOf('files') === 'live' || wearOf('shell') === 'live'
   const edits = b.edited.length
   const flow: Wear = isWriting ? 'live' : edits > 0 || dirty > 0 ? 'used' : 'idle'
-  const tagText =
+  // The tag names the lane this turn's edits fall in, or warns in amber where they span lanes or the
+  // branch's name and files disagree. Its wordings run long to short; the first that fits whole is used.
+  const turn = turnLanes(b.edited, here)
+  const lane = turn.warn === undefined ? turn.lanes[0] : undefined
+  const mid = turn.warn ?? lane
+  const files = plural(dirty, 'file')
+  const wordings: string[] =
     here === undefined
-      ? edits > 0 ? `${plural(edits, 'file')} edited this turn` : 'no file edits yet'
+      ? [edits > 0 ? `${plural(edits, 'file')} edited this turn` : 'no file edits yet']
       : dirty > 0
-        ? isWide || dirty > 9 ? `${plural(dirty, 'file')} · not committed` : `${plural(dirty, 'file')} changed · not committed`
-        : edits > 0 ? `${edits} edited · all committed` : 'nothing to commit'
+        ? mid === undefined
+          ? [`${files} changed · not committed`, `${files} · not committed`]
+          : [`${files} changed · ${mid} · not committed`, `${files} · ${mid} · not committed`, `${files} · ${mid} · uncommitted`, `${files} · ${mid}`, mid]
+        : edits > 0
+          ? mid === undefined
+            ? [`${edits} edited · all committed`]
+            : [`${plural(turn.edits || edits, 'edit')} · ${mid} · all committed`, `${plural(turn.edits || edits, 'edit')} · ${mid}`, mid]
+          : mid === undefined ? ['nothing to commit'] : [`nothing to commit · ${mid}`, mid]
+  // Width alone picks: the long form never fits the wide tag or ten files and more, as before.
+  const room = L.tag.w - 12
+  if (turn.warnShort !== undefined && here !== undefined) wordings.push(turn.warnShort)
+  const tagText = wordings.find(w => monoWidth(w) <= room) ?? (wordings[wordings.length - 1] as string)
+  const isWarn = turn.warn !== undefined && here !== undefined
+  const tagLine = isWarn ? TONE.warn.ink : flow === 'idle' ? C.nodeLine : C.accent
+  const tagInk = isWarn ? TONE.warn.ink : flow === 'idle' ? C.muted : C.accent
   const tag =
-    `<rect x="${L.tag.x + 0.5}" y="${L.tag.y + 0.5}" width="${L.tag.w - 1}" height="25" rx="12.5" fill="${C.canvas}" stroke="${flow === 'idle' ? C.nodeLine : C.accent}"/>` +
-    text(L.tag.x + L.tag.w / 2, L.tag.y + 17, esc(fitMono(tagText, L.tag.w - 12)), { font: 'mono', anchor: 'middle', fill: flow === 'idle' ? C.muted : C.accent })
+    `<rect x="${L.tag.x + 0.5}" y="${L.tag.y + 0.5}" width="${L.tag.w - 1}" height="25" rx="12.5" fill="${C.canvas}" stroke="${tagLine}"/>` +
+    text(L.tag.x + L.tag.w / 2, L.tag.y + 17, esc(fitMono(tagText, room)), { font: 'mono', anchor: 'middle', fill: tagInk })
 
   const release = isWide ? { svg: wideRelease(b, names, now, flow) + wideFeed(b), h: WIDE.h } : tallRelease(b, names, now, flow)
 
