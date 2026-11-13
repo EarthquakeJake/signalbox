@@ -295,7 +295,36 @@ export const FIXTURES: Fixture[] = [
       ],
     }),
   }, { staging: 'UAT', live: 'Live' }),
-  make('trunk-releases', 'On main in no lane: what is live in every lane', {
+  make('silkscreen-same-as-live', 'Silkscreen as git read it: staging 12 behind but the same as live, with subjects', {
+    ...busy,
+    repo: repoOf({
+      branch: 'claude/upbeat-volhard-48eb37',
+      behind: 91,
+      merged: 4,
+      loose: [{ name: 'claude/vigorous-khayyam-da3b47', ahead: 4, behind: 91, updatedAt: NOW - 26 * H, subject: 'Plan: old sessions ended (5.2)' }],
+      lanes: [
+        {
+          id: 'app', name: 'App', branches: 3, isHere: false, live: 'app-v3.14.0', isStagingLive: true,
+          staging: { updatedAt: NOW - 30 * H, subject: 'UAT', behind: 12 },
+          releases: [{ name: 'app-v3.14.0', at: NOW - 4.5 * H }],
+          open: [
+            { name: 'app/pins-tooltip', ahead: 2, behind: 12, updatedAt: NOW - 5 * H, subject: 'Pins: show the full name in a tooltip' },
+            { name: 'app/board-check', ahead: 1, behind: 30, updatedAt: NOW - 2 * 24 * H, subject: 'Check the board before saving' },
+            { name: 'app/routing-order', ahead: 3, behind: 64, updatedAt: NOW - 16 * 24 * H, subject: 'Routing: keep the order of nested routes' },
+          ],
+        },
+        {
+          id: 'website', name: 'Website', branches: 1, isHere: true, isGuessed: true, byFiles: 1, live: 'site-2026-11-13', isStagingLive: true, hasYours: false,
+          staging: { updatedAt: NOW - 30 * H, subject: 'UAT', behind: 12 },
+          releases: [{ name: 'site-2026-11-13', at: NOW - 4.5 * H }],
+          open: [{ name: 'claude/upbeat-volhard-48eb37', ahead: 2, behind: 91, updatedAt: NOW - H, isByFiles: true, subject: 'Landing: untangle the hero' }],
+        },
+        { id: 'platform', name: 'Platform', branches: 1, isHere: false, open: [{ name: 'platform/branch-prefix', ahead: 1, behind: 0, updatedAt: NOW - 26 * H, subject: 'Name branches by lane prefix' }] },
+        { id: 'cloud', name: 'Cloud trial', branches: 1, isHere: false, isParked: true, open: [{ name: 'codex/private-alpha', ahead: 17, behind: 111, updatedAt: NOW - 20 * 24 * H, isByFiles: true }] },
+      ],
+    }),
+  }, { staging: 'UAT', live: 'Live' }),
+  make('trunk-releases','On main in no lane: what is live in every lane', {
     ...calm,
     repo: repoOf({
       branch: 'main',
