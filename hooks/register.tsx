@@ -3,10 +3,13 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import type { Board, Row, StationId } from '../types'
 import { NAMES, drawBoard, short } from './draw'
+import { readRepo } from './git'
 
 const PANE = 'signalbox'
 const TITLE = 'Signalbox'
 const KEEP = 12
+
+let isTicking = false
 
 const EMPTY: Board = { counts: {}, live: {}, rows: [], edited: [], calls: 0, isWorking: false }
 
@@ -114,14 +117,41 @@ const took = (row: Row): string => {
   return ms < 100 ? '' : ms < 10000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.round(ms / 1000)}s`
 }
 
-const nameFrom = (value: unknown, fallback: string): string => (typeof value === 'string' && value.trim() !== '' ? value.trim() : fallback)
+// The folder the session works in and the trunk to measure against, set when the module loads.
+let where: string | undefined
+let asked = ''
+let readAt = 0
+let isReading = false
+
+/** Re-reads the branch picture, at most once every three seconds, never holding up the caller. */
+async function refresh($: EngineInterface, isForced: boolean): Promise<void> {
+  if (where === undefined || isReading) return
+  const now = await quietly(() => $.clock.now())
+  if (now === undefined) return
+  if (!isForced && now - readAt < 3000) return
+  isReading = true
+  readAt = now
+  try {
+    const repo = await readRepo($, where, asked)
+    await quietly(() => update($, board, b => ({ ...b, repo })))
+  } finally {
+    isReading = false
+  }
+}
 
 export const register: Register = (on, options) => {
-  const names = { staging: nameFrom(options?.stagingName, 'Staging'), live: nameFrom(options?.liveName, 'Live') }
+  asked = typeof options?.trunkBranch === 'string' ? options.trunkBranch.trim() : ''
 
   on('session.start', async ($, e, next) => {
     await quietly(() => $.command.register({ name: 'signalbox', description: 'Open the Signalbox pane' }))
     void quietly(() => $.ui.open({ id: PANE, title: TITLE }))
+    where = e.cwd
+    void refresh($, true)
+    if (!isTicking) {
+      isTicking = true
+      // A quiet heartbeat, so a commit or a checkout made outside this session still shows.
+      void quietly(async () => $.clock.every(20000, () => void refresh($, false)))
+    }
 
     return next(e)
   })
@@ -167,6 +197,7 @@ export const register: Register = (on, options) => {
           rows: b.rows.map(r => (r.status === 'run' ? { ...r, status: 'ok' as const, endedAt: now } : r)),
         }))
       })
+      void refresh($, true)
     }
 
     return next(e)
@@ -178,6 +209,7 @@ export const register: Register = (on, options) => {
     try {
       const ran = await next(e)
       await finish($, id, seen.station, ran.deny !== undefined || ran.isError === true ? 'err' : 'ok')
+      if (seen.station === 'files' || seen.station === 'shell') void refresh($, false)
 
       return ran
     } catch (failure) {
@@ -224,7 +256,7 @@ export const register: Register = (on, options) => {
 
     return (
       <Box flexDirection="column" gap={1}>
-        <Svg source={drawBoard(state, isWide, names)} alt={alt} />
+        <Svg source={drawBoard(state, isWide)} alt={alt} />
         <Box flexDirection="column">{feed}</Box>
       </Box>
     )

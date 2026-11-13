@@ -43,7 +43,7 @@ type Layout = {
 }
 
 const TALL: Layout = {
-  w: 440, h: 416, core: { x: 150, y: 44 },
+  w: 440, h: 436, core: { x: 150, y: 44 },
   spots: {
     you: { x: 16, y: 52, w: 110, wire: 'M126 66H150', pin: [150, 66] },
     skills: { x: 16, y: 88, w: 110, wire: 'M126 102H150', pin: [150, 102] },
@@ -106,9 +106,7 @@ function wire(d: string, wear: Wear): string {
   )
 }
 
-export type TrackNames = { staging: string; live: string }
-
-export function drawBoard(b: Board, isWide: boolean, names: TrackNames): string {
+export function drawBoard(b: Board, isWide: boolean): string {
   const L = isWide ? WIDE : TALL
   const wearOf = (id: StationId): Wear => ((b.live[id] ?? 0) > 0 ? 'live' : (b.counts[id] ?? 0) > 0 ? 'used' : 'idle')
   const ids = Object.keys(L.spots) as StationId[]
@@ -152,19 +150,63 @@ export function drawBoard(b: Board, isWide: boolean, names: TrackNames): string 
     `<rect x="${L.tag.x}" y="${L.tag.y}" width="${L.tag.w}" height="26" rx="13" fill="${C.canvas}" stroke="${flow === 'idle' ? C.nodeLine : C.accent}"/>` +
     `<text x="${L.tag.x + L.tag.w / 2}" y="${L.tag.y + 17}" text-anchor="middle" ${MONO} font-size="11" fill="${flow === 'idle' ? C.muted : C.accent}">${tagText}</text>`
 
-  // The release track is not connected yet: its nodes stay dashed until the branch data arrives.
+  // The release track, from git: what is uncommitted, what is on this branch, and how it stands against the trunk.
+  const repo = b.repo
+  const here = repo !== undefined && repo.kind === 'repo' ? repo : undefined
+  const dirty = here?.dirty ?? 0
+  const ahead = here?.ahead ?? 0
+  const behind = here?.behind ?? 0
+  const unpushed = here?.unpushed
+
+  type Stop = { name: string; under: string; count: string; isLit: boolean; isMarked?: boolean }
+  const stops: [Stop, Stop, Stop] =
+    here === undefined
+      ? [
+          { name: 'Working', under: '', count: '', isLit: false },
+          { name: 'Branch', under: '', count: '', isLit: false },
+          { name: 'Trunk', under: '', count: '', isLit: false },
+        ]
+      : [
+          {
+            name: 'Working',
+            under: dirty === 0 ? 'clean' : `${dirty} file${dirty === 1 ? '' : 's'}`,
+            count: dirty === 0 ? '' : String(dirty),
+            isLit: dirty > 0,
+          },
+          {
+            name: short(here.branch, 16),
+            under: unpushed === undefined ? 'no remote' : unpushed === 0 ? 'pushed' : `${unpushed} to push`,
+            count: ahead === 0 ? '' : `+${ahead}`,
+            isLit: ahead > 0,
+            isMarked: unpushed !== undefined && unpushed > 0,
+          },
+          {
+            name: here.trunk === undefined ? 'trunk' : short(here.trunk.replace(/^origin\//, ''), 16),
+            under: here.trunk === undefined ? 'you are on it' : behind === 0 ? 'level' : `${behind} behind`,
+            count: behind === 0 ? '' : String(behind),
+            isLit: false,
+          },
+        ]
+
   const [n1, n2, n3] = L.nodes
-  const first = isWide ? `x="${n1}" text-anchor="middle"` : `x="${n1 - 14}" text-anchor="start"`
-  const last = isWide ? `x="${n3}" text-anchor="middle"` : `x="${n3 + 14}" text-anchor="end"`
-  const track =
-    `<path d="M${n1 + 14} ${L.cy}H${n2 - 14}M${n2 + 14} ${L.cy}H${n3 - 14}" fill="none" stroke="${C.wire}" stroke-width="1.5"/>` +
-    `<circle cx="${n1}" cy="${L.cy}" r="13" fill="${C.canvas}" stroke="${edits > 0 ? C.accent : C.nodeLine}" stroke-width="${edits > 0 ? 2 : 1.5}"${edits > 0 ? '' : ' stroke-dasharray="3 3"'}/>` +
-    `<circle cx="${n2}" cy="${L.cy}" r="13" fill="${C.canvas}" stroke="${C.nodeLine}" stroke-width="1.5" stroke-dasharray="3 3"/>` +
-    `<circle cx="${n3}" cy="${L.cy}" r="13" fill="${C.canvas}" stroke="${C.nodeLine}" stroke-width="1.5" stroke-dasharray="3 3"/>` +
-    `<text ${first} y="${L.labelY}" ${SANS} font-size="11" fill="${edits > 0 ? C.hl : C.muted}">Your branch</text>` +
-    `<text x="${n2}" y="${L.labelY}" text-anchor="middle" ${SANS} font-size="11" fill="${C.muted}">${esc(short(names.staging, 14))}</text>` +
-    `<text ${last} y="${L.labelY}" ${SANS} font-size="11" fill="${C.muted}">${esc(short(names.live, 14))}</text>` +
-    `<text x="${L.caption.x}" y="${L.caption.y}" ${SANS} font-size="11" fill="${C.muted}">Release track · branch data comes next</text>`
+  const anchorOf = (at: number, x: number): string =>
+    isWide || at === 1 ? `x="${x}" text-anchor="middle"` : at === 0 ? `x="${x - 14}" text-anchor="start"` : `x="${x + 14}" text-anchor="end"`
+
+  let track = `<path d="M${n1 + 14} ${L.cy}H${n2 - 14}M${n2 + 14} ${L.cy}H${n3 - 14}" fill="none" stroke="${C.wire}" stroke-width="1.5"/>`
+  const places: [number, number, number] = [n1, n2, n3]
+  for (let at = 0; at < 3; at += 1) {
+    const stop = stops[at]
+    const x = places[at]
+    const ring = here === undefined ? C.nodeLine : stop.isLit ? C.accent : C.wire
+    const dash = here === undefined ? ' stroke-dasharray="3 3"' : ''
+    track +=
+      `<circle cx="${x}" cy="${L.cy}" r="13" fill="${C.canvas}" stroke="${ring}" stroke-width="${stop.isLit ? 2 : 1.5}"${dash}/>` +
+      (stop.count === '' ? '' : `<text x="${x}" y="${L.cy + 4}" text-anchor="middle" ${MONO} font-size="11" fill="${stop.isLit ? C.accent : C.muted}">${stop.count}</text>`) +
+      (stop.isMarked === true ? `<circle cx="${x + 11}" cy="${L.cy - 11}" r="3.5" fill="${C.port}"/>` : '') +
+      `<text ${anchorOf(at, x)} y="${L.labelY}" ${SANS} font-size="11" fill="${stop.isLit ? C.hl : C.muted}">${esc(stop.name)}</text>` +
+      (stop.under === '' ? '' : `<text ${anchorOf(at, x)} y="${L.labelY + 15}" ${SANS} font-size="11" fill="${C.muted}">${esc(stop.under)}</text>`)
+  }
+  track += `<text x="${L.caption.x}" y="${L.caption.y}" ${SANS} font-size="11" fill="${C.muted}">${here === undefined ? (repo === undefined ? 'Reading the repository…' : 'No git repository in this folder') : 'Release track'}</text>`
 
   const headY = isWide ? 16 : 24
   const head =

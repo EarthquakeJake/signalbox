@@ -11,7 +11,7 @@ Signalbox is a mod for Claude Code (a plugin that adds a pane). It runs locally.
 - **Claude, in the middle.** The model in use, what it is doing right now, and how full the context window is.
 - **Ten stations as pins.** You, Skills, Hooks, Memory, Model, Agents, Browser, Network, Files and Shell. A station's wire shows a moving dash while a call is running and stays lit, with a count, once it has been used since your last message.
 - **Files and Shell feed the branch.** These are the two stations that change a repository. Their wires merge into a tag that counts the files edited since your last message, and run on into the release track.
-- **A release track.** Your branch, a middle stage and a last stage. In this version the track is a placeholder: it is drawn, and the stage names are yours to set, but it does not read branch or deploy data yet (see Roadmap).
+- **A release track, read from git.** Three stops: **Working** (files changed but not committed), **your branch** (commits the trunk does not have, with a copper dot when some are not pushed), and **the trunk** (main, master or whatever your remote calls its default, with how far behind you are). A stop lights up when there is work sitting at it.
 - **A short feed.** The last four actions, under the board.
 
 ## Two layouts, chosen for you
@@ -49,26 +49,24 @@ Start a new session afterwards. The pane opens by itself; `/signalbox` opens it 
 
 | Setting | Default | What it does |
 | --- | --- | --- |
-| `stagingName` | `Staging` | The name of the middle stop of the release track, such as Staging, UAT or Preview. |
-| `liveName` | `Live` | The name of the last stop, such as Live or Production. |
+| `trunkBranch` | empty | The branch your work is measured against, such as `main`, `master` or `develop`. Left empty, Signalbox asks the remote which branch is its default and falls back to `main` or `master`. |
 
 ## What it reads, and what it does not
 
 Signalbox listens to the session's own events: when a turn starts and ends, when the model takes a step, and when a tool is called. From a tool call it keeps the tool's name and a few words for the feed (a file's name, a command's description). It keeps this in the session's state and nowhere else.
 
-In this version it makes no network requests, reads no files, runs no processes and calls no model. It never changes or blocks a tool call: every event is passed on untouched.
+For the release track it runs `git` in the session's own folder, read-only: `git status`, `git for-each-ref` or `git symbolic-ref`, and `git rev-list --count`. Nothing is written, nothing is fetched from a remote, and a repository that does not answer within five seconds is left alone. The read happens when a session starts, after a turn, after a call that touched files or the shell, and otherwise every twenty seconds.
+
+It makes no network requests of its own, reads no files, and calls no model. It never changes or blocks a tool call: every event is passed on untouched.
 
 ## Roadmap
 
-- **Branch data.** Read the current branch, how far it is ahead of and behind the main branch, and what is uncommitted, and show them on the release track.
-- **Stage status.** Show what is on the middle and last stages, where a project has a source for that.
+- **Deploy stages.** Stops for staging and production, where a project has a source for them, with names of its own.
 - **More views.** A tracks view and a spine view of all open branches, switchable under the board.
-
-Reading branch data means running `git` in the project folder. When that arrives it will be stated here.
 
 ## Status
 
-Version 0.1.0, an early release. Built and tried on Claude Code 2.1.321 in the desktop app on Windows. Other surfaces are covered by the mod's tests but have not been tried by hand.
+Version 0.2.0, an early release. Built and tried on Claude Code 2.1.321 in the desktop app on Windows. Other surfaces are covered by the mod's tests but have not been tried by hand. The test engine serves no processes, so the git reading is covered by its failing case alone and was checked by hand in a real repository.
 
 ## Development
 
