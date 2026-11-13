@@ -53,6 +53,16 @@ In the desktop app, where `/plugin` does not run: click **+** next to the prompt
 
 Start a new session afterwards. The pane opens by itself; `/signalbox` opens it again if you closed it.
 
+## Conflict signals
+
+Signalbox warns early when two pieces of open work are heading for each other, so parallel chats and teammates can sort it out before anyone merges.
+
+- **Red, a conflict:** two open branches change the same lines, and git would not merge them cleanly. Git tests this with `git merge-tree`, which checks out nothing and touches no one's files.
+- **Amber, an overlap:** they change the same files across lanes, or across several files, but would still merge cleanly. Uncommitted work in any worktree counts, so two chats editing the same file show up before either commits.
+- **Quiet, routine:** branches of one lane that share a single file merge cleanly all the time in a project built around one big file. They get one quiet line, such as "4 App branches share public/app/index.html", not a mark each.
+
+The marks sit on the branches themselves, on your own branch, and in a one-line summary ("1 conflict · 2 overlaps") that is absent when all is clean. The tall spine lists every clash at its foot.
+
 ## Two views
 
 - **The board** (`/signalbox board`, the default): Claude, its tools, and the lanes.
@@ -116,7 +126,7 @@ Where a branch's name matches no lane's pattern — the branches the desktop app
 
 Signalbox listens to the session's own events: when a turn starts and ends, when the model takes a step, and when a tool is called. From a tool call it keeps the tool's name and a few words for the feed (a file's name, a command's description). It keeps this in the session's state and nowhere else.
 
-For the release track it runs `git` in the session's own folder, read-only: `git status`, `git for-each-ref` or `git symbolic-ref`, `git rev-list --count`, and, where a staging folder is set, `git log -1` on that folder and `git describe --tags`; with a track file, also `git tag --list`, `git merge-base --is-ancestor` and `git diff --name-only` against the trunk for branches placed by their files. Nothing is written, nothing is fetched from a remote, and a repository that does not answer within five seconds is left alone. The read happens when a session starts, after a turn, after a call that touched files or the shell, and otherwise every twenty seconds. It asks the session where it is running each time, so a session given its folder after it starts, or moved by `/cd` or into a worktree, still reads the right repository.
+For the release track it runs `git` in the session's own folder, read-only: `git status`, `git for-each-ref` or `git symbolic-ref`, `git rev-list --count`, and, where a staging folder is set, `git log -1` on that folder and `git describe --tags`; with a track file, also `git tag --list`, `git merge-base --is-ancestor` and `git diff --name-only` against the trunk for branches placed by their files. For conflict signals it also runs `git worktree list`, `git status` in up to four worktrees per refresh, `git diff --name-only` per open branch and `git merge-tree` for pairs that share files, each re-run only when a branch moves. Nothing is written, nothing is fetched from a remote, and a repository that does not answer within five seconds is left alone. The read happens when a session starts, after a turn, after a call that touched files or the shell, and otherwise every twenty seconds. It asks the session where it is running each time, so a session given its folder after it starts, or moved by `/cd` or into a worktree, still reads the right repository.
 
 Where git will not answer, the board says so in git's own words rather than claiming the folder holds no repository, and on a host where no command may run at all it reads `.git/HEAD` for the branch name.
 
@@ -130,7 +140,7 @@ It makes no network requests of its own, and calls no model. It never changes or
 
 ## Status
 
-Version 0.15.0, an early release. Both layouts have been rendered and looked at, with lanes and without. Built and tried on Claude Code 2.1.321 in the desktop app on Windows. Other surfaces are covered by the mod's tests but have not been tried by hand. The test engine serves no processes, so the git reading is covered by its failing case alone and was checked by hand in a real repository.
+Version 0.16.0, an early release. Both layouts have been rendered and looked at, with lanes and without. Built and tried on Claude Code 2.1.321 in the desktop app on Windows. Other surfaces are covered by the mod's tests but have not been tried by hand. The test engine serves no processes, so the git reading is covered by its failing case alone and was checked by hand in a real repository.
 
 ## Development
 

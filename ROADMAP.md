@@ -6,8 +6,6 @@ The design reference is the **Refined board** page of the Release map canvas: ht
 
 | Track | Work | Branch |
 | --- | --- | --- |
-| Data | **Conflict signals, the data:** each open branch's changed files plus its worktree's uncommitted files; pairs that share files are tested with `git merge-tree` (no checkout). `Repo.clashes`, `Repo.clash`, `OpenBranch.clash`. | `data/clashes` |
-| Board | **Conflict signals, drawn:** red for a real conflict, amber for the same files, on branch rows, the lit lane and the spine, plus a one-line summary. | `board/clashes` |
 
 ## Next
 
@@ -28,6 +26,7 @@ The design reference is the **Refined board** page of the Release map canvas: ht
 
 ## Done
 
+- 0.16.0: conflict signals. Red for branches git would not merge cleanly, amber for shared files across lanes or with uncommitted work, routine same-file overlaps within a lane folded into one quiet line; on branches, your branch, a summary and the tall spine's foot.
 - 0.15.0: the spine redesigned as Jake picked from "Spine, round 2": a lane tree ordered closest to main first when tall, a tree when wide, Claude given room, no legend; your own branch described rather than named.
 - 0.14.2: an 8 px frame round every drawing instead of 16, and the wide views at one steady height.
 - 0.14.1: the pane fills its width as lot-map does (the host fits it), the height follows the rows, the tall board keeps room for the feed, and the redraw ticks every second.

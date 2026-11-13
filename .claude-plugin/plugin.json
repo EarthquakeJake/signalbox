@@ -1,6 +1,6 @@
 {
   "name": "signalbox",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "description": "A live circuit board beside the chat: Claude sits in the middle, its tools are pins that light up as they are used, and the work is wired into your release tracks, read from git. Switches between a tall and a wide layout by itself.",
   "author": {
     "name": "EarthquakeJake",
