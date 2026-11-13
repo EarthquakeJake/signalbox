@@ -1,5 +1,5 @@
 import type { Board, Lane, StationId } from '../types'
-import { C, STATION_TONE, WIDE_HEIGHT, clashMark, clashOf, clashSummary, frame, isMadeUpName, line, agoOf, branchIn, esc, fit, fitMono, laneCard, laneColours, laneLine, stagingWords, text, widthOf } from './lanes'
+import { C, STATION_TONE, WIDE_HEIGHT, clashMark, clashOf, clashSummary, strongClashes, frame, isMadeUpName, line, agoOf, branchIn, esc, fit, fitMono, laneCard, laneColours, laneLine, stagingWords, text, widthOf } from './lanes'
 
 export { fit }
 
@@ -477,7 +477,7 @@ export function drawBoard(b: Board, isWide: boolean, names: TrackNames, now: num
 
   // The clash summary where the eye lands first, beside NOW; nothing at all when the repository is clean.
   // Wide, the Model chip sits 100 px to the right of NOW, so the two counts stack under it instead.
-  const summary = here === undefined ? [] : clashSummary(here.clashes)
+  const summary = here === undefined ? [] : clashSummary(strongClashes(here))
   const summarySvg =
     summary.length === 0
       ? ''

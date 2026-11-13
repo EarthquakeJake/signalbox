@@ -1,7 +1,7 @@
 import type { Board, Lane, OpenBranch, StationId } from '../types'
 import { NAMES } from './draw'
 import {
-  C, FAR_BEHIND, STATION_TONE, TONE, WIDE_HEIGHT, agoOf, branchIn, clashInk, clashMark, clashOf, clashSummary, esc, fit, fitMono, frame, isMadeUpName,
+  C, FAR_BEHIND, STATION_TONE, TONE, WIDE_HEIGHT, agoOf, branchIn, clashInk, clashMark, clashOf, clashSummary, sharedFiles, strongClashes, esc, fit, fitMono, frame, isMadeUpName,
   laneColours, laneTile, line as textLine, liveWords, monoWidth, text, widthOf,
 } from './lanes'
 import type { Piece } from './lanes'
@@ -257,7 +257,7 @@ function treeTall(b: Board, here: Here, now: number): string {
   out += `<circle cx="${trunkX}" cy="${y + 8}" r="9" fill="${C.canvas}" stroke="${C.accent}" stroke-width="2"/>`
   out += text(46, y + 13, 'main', { font: 'mono', size: 14, weight: 500, fill: C.text })
   // The clash summary on main's row, at the right: nothing when clean.
-  const summary = clashSummary(here.clashes)
+  const summary = clashSummary(strongClashes(here))
   const summaryW = summary.reduce((n, p) => n + widthOf(p.words, 12), 0)
   if (summary.length > 0) out += textLine(424 - summaryW, y + 13, summary, summaryW + 1, 12)
   y += 38
@@ -323,8 +323,9 @@ function treeTall(b: Board, here: Here, now: number): string {
   }
   const trunk = lastJoin > trunkTop ? `<path d="M${trunkX} ${trunkTop}V${lastJoin}" fill="none" stroke="${C.accent}" stroke-opacity="0.35" stroke-width="3" stroke-linecap="round"/>` : ''
   // Every clash at the foot, one a line, worst first: the two branches, the level and the first file.
-  const clashes = here.clashes ?? []
-  if (clashes.length > 0) {
+  const clashes = strongClashes(here)
+  const shared = sharedFiles(here)
+  if (clashes.length > 0 || shared.length > 0) {
     out += hair(16, 424, y)
     y += 8
     for (const c of clashes) {
@@ -339,6 +340,13 @@ function treeTall(b: Board, here: Here, now: number): string {
         ...(c.isUncommitted === true ? [{ words: ' · uncommitted', fill: clashInk(c.level) }] : []),
       ]
       out += textLine(32 + pairW + 8, y, [{ words: '· ', fill: C.muted }, ...tail], 424 - (32 + pairW + 8))
+    }
+    // Routine overlaps last, one quiet line per lane and file, in the lane's colour rather than amber.
+    const colours = laneColours(here.lanes ?? [])
+    for (const s of shared) {
+      y += 20
+      out += `<circle cx="21" cy="${y - 4}" r="3" fill="none" stroke="${colours.get(s.lane) ?? C.muted}" stroke-width="1.5"/>`
+      out += text(32, y, esc(fit(s.words, 424 - 32)), {})
     }
     y += 12
   }
@@ -401,7 +409,7 @@ function treeWide(b: Board, here: Here, now: number): string {
   out += `<circle cx="${right - 17}" cy="${mainY}" r="9" fill="${C.canvas}" stroke="${C.accent}" stroke-width="2"/>`
   out += text(right - 34, mainY - 11, 'main', { font: 'mono', size: 13, weight: 500, anchor: 'end', fill: C.text })
   // The clash summary at main's far end, above the line: nothing when clean.
-  const summary = clashSummary(here.clashes)
+  const summary = clashSummary(strongClashes(here))
   if (summary.length > 0) out += textLine(left, mainY - 11, summary, right - 80 - left, 12)
   if (total === 0) out += text(left, mainY + 34, 'No lanes and no open branches', { size: 12 })
   let x = left

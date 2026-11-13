@@ -407,13 +407,51 @@ export function branchSaid(repo: ClashSource, name: string): string {
  * is marked (`fallback`), the other side is "another branch".
  */
 export function clashOf(repo: ClashSource, name: string, fallback?: 'conflict' | 'overlap'): ClashNote | undefined {
-  const found = (repo.clashes ?? []).filter(c => c.a === name || c.b === name).sort((p, q) => Number(q.level === 'conflict') - Number(p.level === 'conflict'))[0]
+  const all = (repo.clashes ?? []).filter(c => c.a === name || c.b === name)
+  // A branch whose only clashes are routine is not marked: the lane's shared file is said once, quietly, elsewhere.
+  const strong = all.filter(c => !isRoutine(repo, c))
+  if (all.length > 0 && strong.length === 0) return undefined
+  const found = strong.sort((p, q) => Number(q.level === 'conflict') - Number(p.level === 'conflict'))[0]
   const level = found?.level ?? fallback
   if (level === undefined) return undefined
   const other = found === undefined ? 'another branch' : branchSaid(repo, found.a === name ? found.b : found.a)
   const isUncommitted = found?.isUncommitted === true
   const verb = level === 'conflict' ? 'conflicts with' : 'same files as'
   return { level, ink: clashInk(level), other, words: `${verb} ${other}${isUncommitted ? ', uncommitted' : ''}`, files: found?.files ?? [], isUncommitted }
+}
+
+/** The lane a branch belongs to, by its place in a lane's open branches; none for a branch in no lane. */
+const laneOfBranch = (repo: ClashSource, name: string): Lane | undefined => (repo.lanes ?? []).find(lane => (lane.open ?? []).some(b => b.name === name))
+
+/**
+ * A routine overlap: clean, committed, between two branches of one lane, on one
+ * file. A project whose app is one big file has these as a matter of course, so
+ * they are grouped into one quiet line rather than marked branch by branch.
+ */
+export function isRoutine(repo: ClashSource, c: Clash): boolean {
+  if (c.level !== 'overlap' || c.isUncommitted === true || c.files.length !== 1) return false
+  const lane = laneOfBranch(repo, c.a)
+  return lane !== undefined && lane === laneOfBranch(repo, c.b)
+}
+
+/** The clashes worth a mark: every conflict, and the overlaps that cross lanes or files or hold uncommitted work. */
+export const strongClashes = (repo: ClashSource): Clash[] => (repo.clashes ?? []).filter(c => !isRoutine(repo, c))
+
+/** The routine overlaps, grouped by lane and file: "4 App branches share public/app/index.html". */
+export function sharedFiles(repo: ClashSource): Array<{ lane: Lane; file: string; branches: number; words: string }> {
+  const groups = new Map<string, { lane: Lane; file: string; names: Set<string> }>()
+  for (const c of repo.clashes ?? []) {
+    if (!isRoutine(repo, c)) continue
+    const lane = laneOfBranch(repo, c.a) as Lane
+    const file = c.files[0] as string
+    const key = `${lane.name}\u0000${file}`
+    const group = groups.get(key) ?? { lane, file, names: new Set<string>() }
+    group.names.add(c.a)
+    group.names.add(c.b)
+    groups.set(key, group)
+  }
+
+  return [...groups.values()].map(g => ({ lane: g.lane, file: g.file, branches: g.names.size, words: `${g.names.size} ${g.lane.name} branches share ${g.file}` }))
 }
 
 /** "1 conflict · 2 overlaps" as coloured pieces, or none at all when the repository is clean. */
