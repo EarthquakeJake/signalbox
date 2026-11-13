@@ -52,6 +52,8 @@ export type Lane = {
   isPassed?: boolean
   /** Whether the branch you are on has already reached this lane's staging. */
   hasYours?: boolean
+  /** How many of `branches` were placed here by the files they changed, their names claiming no lane. */
+  byFiles?: number
   /** True where this lane was worked out from the files changed, not from the branch name. */
   isGuessed?: boolean
   /** True for a lane the project has set aside. */
@@ -86,6 +88,8 @@ export type Repo =
       tag?: string
       /** The lanes the project declares, where it declares any. */
       lanes?: Lane[]
+      /** Your branch's name claimed no lane and its files could not settle one: none matched, or two lanes tied. */
+      guess?: 'none' | 'tied'
     }
 
 export type Board = {

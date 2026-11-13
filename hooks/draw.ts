@@ -254,7 +254,7 @@ export function drawBoard(b: Board, isWide: boolean, names: TrackNames, now: num
   const capX = lanes.length > 0 ? shape.right : L.caption.x
   const capY = lanes.length > 0 ? shape.top - 14 : L.caption.y
   const capAnchor = lanes.length > 0 ? ' text-anchor="end"' : ''
-  track += `<text x="${capX}" y="${capY}"${capAnchor} ${SANS} font-size="11" fill="${C.muted}">${here === undefined ? (repo === undefined ? 'Reading the repository…' : repo.kind === 'blocked' ? `Git did not run: ${esc(short(repo.why, isWide ? 50 : 36))}` : repo.why === undefined ? 'No git repository in this folder' : `Git said: ${esc(short(repo.why, isWide ? 50 : 34))}`) : lanes.length > 0 ? `${lanes.length} tracks · ${esc(short(here.branch, isWide ? 30 : 22))}${lanes.some(lane => lane.isGuessed === true) ? ' · lane from files' : ''}` : here.staging === undefined ? 'Release track' : esc(short(here.staging.subject, isWide ? 46 : 34))}</text>`
+  track += `<text x="${capX}" y="${capY}"${capAnchor} ${SANS} font-size="11" fill="${C.muted}">${here === undefined ? (repo === undefined ? 'Reading the repository…' : repo.kind === 'blocked' ? `Git did not run: ${esc(short(repo.why, isWide ? 50 : 36))}` : repo.why === undefined ? 'No git repository in this folder' : `Git said: ${esc(short(repo.why, isWide ? 50 : 34))}`) : lanes.length > 0 ? `${lanes.length} tracks · ${esc(short(here.branch, isWide ? 30 : 22))}${lanes.some(lane => lane.isGuessed === true) ? ' · lane from files' : here.guess === 'tied' ? ' · lanes tied in files' : here.guess === 'none' ? ' · no lane in files' : ''}` : here.staging === undefined ? 'Release track' : esc(short(here.staging.subject, isWide ? 46 : 34))}</text>`
 
   const headY = isWide ? 16 : 24
   const head =

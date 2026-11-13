@@ -35,3 +35,32 @@ export const matches = (pattern: string, name: string): boolean => {
     return false
   }
 }
+
+/**
+ * Which lane owns most of a branch's changed files. A tie at the top is no
+ * answer: a guess shown as a lane should never be a coin flip.
+ */
+export type Pick = { kind: 'lane'; index: number } | { kind: 'tied' } | { kind: 'none' }
+
+export const pickLane = (files: readonly string[], lanePaths: readonly (readonly string[])[]): Pick | undefined => {
+  if (files.length === 0) return undefined
+  let best = -1
+  let most = 0
+  let isTied = false
+  for (let index = 0; index < lanePaths.length; index += 1) {
+    const globs = lanePaths[index] ?? []
+    if (globs.length === 0) continue
+    const count = files.filter(file => globs.some(glob => covers(glob, file))).length
+    if (count === 0) continue
+    if (count > most) {
+      most = count
+      best = index
+      isTied = false
+    } else if (count === most) {
+      isTied = true
+    }
+  }
+  if (best < 0) return { kind: 'none' }
+
+  return isTied ? { kind: 'tied' } : { kind: 'lane', index: best }
+}

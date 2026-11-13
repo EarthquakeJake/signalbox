@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { covers, matches } from './paths'
+import { covers, matches, pickLane } from './paths'
 
 const settle = (): Promise<void> => new Promise(resolve => setTimeout(resolve, 150))
 
@@ -130,4 +130,14 @@ test('branch patterns match by name', () => {
   expect(matches('app/*', 'site/landing')).toBe(false)
   expect(matches('feature/app-*', 'feature/app-wires')).toBe(true)
   expect(matches('app/*', 'app/deep/branch')).toBe(true)
+})
+
+test('a branch goes to the lane owning most of its files, and a tie names no lane', () => {
+  const lanes = [['app/**'], ['site/**'], [], ['cloud/**']]
+  expect(pickLane(['site/a.ts', 'site/b.ts', 'app/c.ts'], lanes)).toEqual({ kind: 'lane', index: 1 })
+  expect(pickLane(['app/a.ts', 'site/b.ts'], lanes)).toEqual({ kind: 'tied' })
+  expect(pickLane(['review/plan.md'], lanes)).toEqual({ kind: 'none' })
+  expect(pickLane([], lanes)).toBeUndefined()
+  // A tie below the top does not spoil a clear winner.
+  expect(pickLane(['cloud/a', 'cloud/b', 'app/c', 'site/d'], lanes)).toEqual({ kind: 'lane', index: 3 })
 })

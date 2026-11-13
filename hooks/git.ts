@@ -138,11 +138,14 @@ export async function readRepo($: EngineInterface, cwd: string, asked: string, s
   let staging: Stage | undefined
   let tag: string | undefined
   let lanes: Lane[] | undefined
+  let guess: 'none' | 'tied' | undefined
   if (trunkRef !== undefined) {
     const now = await $.clock.now()
     const specs = await readSpecs($, cwd)
     if (specs.length > 0) {
-      lanes = await readLanes($, cwd, trunkRef, specs, branch, now)
+      const placed = await readLanes($, cwd, trunkRef, specs, branch, now)
+      lanes = placed.lanes
+      guess = placed.guess
     } else if (stagingRef !== '') {
       const found = await refOf($, cwd, stagingRef)
       if (found !== undefined) staging = await stageOf($, cwd, trunkRef, found, now, true)
@@ -164,5 +167,6 @@ export async function readRepo($: EngineInterface, cwd: string, asked: string, s
     ...(staging === undefined ? {} : { staging }),
     ...(tag === undefined ? {} : { tag }),
     ...(lanes === undefined || lanes.length === 0 ? {} : { lanes }),
+    ...(guess === undefined || lanes === undefined || lanes.length === 0 ? {} : { guess }),
   }
 }

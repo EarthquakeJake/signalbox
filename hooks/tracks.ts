@@ -1,7 +1,7 @@
 import type { EngineInterface } from 'claude-code'
 
 import type { Lane, Stage, TrackSpec } from '../types'
-import { covers, matches } from './paths'
+import { matches, pickLane, type Pick } from './paths'
 
 /** Where a project may declare its lanes; the first one found wins. */
 const FILES = ['signalbox.tracks.json', 'tracks.json']
@@ -33,39 +33,32 @@ const text = (value: unknown): string => (typeof value === 'string' ? value.trim
 const list = (value: unknown): string[] => (Array.isArray(value) ? value.map(text).filter(one => one !== '') : [])
 
 
-// The files a branch changed, kept against the commit they were read at, so the
-// diff runs when the branch moves and not on every refresh.
-let seenAt: string | undefined
-let seenFiles: string[] = []
+/** Branches placed by their files at most, so a repository full of them stays cheap. */
+const MOST_PLACED = 12
+
+// Each branch's verdict, kept against the commit it and the trunk stood at, so
+// a diff runs only when one of them moves and not on every refresh.
+let placed = new Map<string, { key: string; pick: Pick | undefined }>()
 
 /**
  * The lane a branch belongs to when its name does not say: the one owning most
- * of the files it changed. One diff, and only for the branch you are on.
+ * of the files it changed since it left the trunk. Undefined when it changed
+ * nothing the trunk lacks.
  */
-async function laneOfFiles($: EngineInterface, cwd: string, trunkRef: string, specs: readonly TrackSpec[]): Promise<number | undefined> {
-  if (!specs.some(spec => (spec.paths ?? []).length > 0)) return undefined
-  const at = await git($, ['rev-parse', 'HEAD'], cwd)
-  if (at === '') return undefined
-  if (at !== seenAt) {
-    const changed = await git($, ['diff', '--name-only', `${trunkRef}...HEAD`], cwd)
-    seenAt = at
-    seenFiles = changed.split('\n').map(one => one.trim()).filter(one => one !== '')
-  }
-  if (seenFiles.length === 0) return undefined
+async function pickOf($: EngineInterface, cwd: string, trunkRef: string, trunkSha: string, ref: string, sha: string, specs: readonly TrackSpec[], kept: Map<string, { key: string; pick: Pick | undefined }>): Promise<Pick | undefined> {
+  const key = `${sha}:${trunkSha}`
+  const before = placed.get(ref)
+  if (before !== undefined && before.key === key) {
+    kept.set(ref, before)
 
-  let best: number | undefined
-  let most = 0
-  for (let index = 0; index < specs.length; index += 1) {
-    const globs = specs[index]?.paths ?? []
-    if (globs.length === 0) continue
-    const count = seenFiles.filter(file => globs.some(glob => covers(glob, file))).length
-    if (count > most) {
-      most = count
-      best = index
-    }
+    return before.pick
   }
+  const changed = await git($, ['diff', '--name-only', `${trunkRef}...${sha}`], cwd)
+  const files = changed.split('\n').map(one => one.trim()).filter(one => one !== '')
+  const pick = pickLane(files, specs.map(spec => spec.paths ?? []))
+  kept.set(ref, { key, pick })
 
-  return best
+  return pick
 }
 
 /**
@@ -161,21 +154,54 @@ async function stageOf($: EngineInterface, cwd: string, trunkRef: string, spec: 
   }
 }
 
-/** Fills in each declared lane: its open branches, its staging stage and what is live on it. */
-export async function readLanes($: EngineInterface, cwd: string, trunkRef: string, specs: readonly TrackSpec[], branch: string, now: number): Promise<Lane[]> {
-  if (specs.length === 0) return []
-  const heads = (await git($, ['for-each-ref', '--format=%(refname:short)', 'refs/heads'], cwd))
+/** The lanes as they stand, and what became of placing your branch by its files where its name did not place it. */
+export type Placed = { lanes: Lane[]; guess?: 'none' | 'tied' }
+
+/** Fills in each declared lane: its open branches, its staging and what is live on it. */
+export async function readLanes($: EngineInterface, cwd: string, trunkRef: string, specs: readonly TrackSpec[], branch: string, now: number): Promise<Placed> {
+  if (specs.length === 0) return { lanes: [] }
+  const rows = (await git($, ['for-each-ref', '--format=%(refname:short)%09%(objectname)', 'refs/heads'], cwd))
     .split('\n')
-    .map(one => one.trim())
-    .filter(one => one !== '')
+    .map(one => one.trim().split('\t'))
+    .flatMap(([name, sha]) => (name === undefined || name === '' || sha === undefined ? [] : [{ name, sha }]))
+  const heads = rows.map(row => row.name)
   const trunkName = trunkRef.replace(/^origin\//, '')
+  const named = specs.map(spec => heads.filter(head => head !== trunkName && (spec.branches ?? []).some(pattern => matches(pattern, head))))
+  const isNamed = named.some(mine => mine.includes(branch))
+
+  // Every branch whose name claims no lane is placed by what it changed, so a
+  // lane's count covers the branches the desktop app names for you too.
+  const byFiles = specs.map(() => 0)
+  let here: Pick | undefined
+  if (specs.some(spec => (spec.paths ?? []).length > 0)) {
+    const trunkSha = await git($, ['rev-parse', '--verify', '--quiet', `${trunkRef}^{commit}`], cwd)
+    if (trunkSha !== '') {
+      const kept = new Map<string, { key: string; pick: Pick | undefined }>()
+      const loose = rows
+        .filter(row => row.name !== trunkName && !named.some(mine => mine.includes(row.name)))
+        // The branch you are on first, so the cap never leaves it out.
+        .sort((a, b) => Number(b.name === branch) - Number(a.name === branch))
+        .slice(0, MOST_PLACED)
+      for (const row of loose) {
+        const pick = await pickOf($, cwd, trunkRef, trunkSha, row.name, row.sha, specs, kept)
+        if (pick?.kind === 'lane') byFiles[pick.index] = (byFiles[pick.index] ?? 0) + 1
+        if (row.name === branch) here = pick
+      }
+      // A detached head is no branch, so it is placed on its own.
+      if (!isNamed && branch !== trunkName && !heads.includes(branch)) {
+        const sha = await git($, ['rev-parse', 'HEAD'], cwd)
+        if (sha !== '') here = await pickOf($, cwd, trunkRef, trunkSha, 'HEAD', sha, specs, kept)
+      }
+      placed = kept
+    }
+  }
 
   const lanes: Lane[] = []
-  let isNamed = false
-  for (const spec of specs) {
-    const patterns = spec.branches ?? []
-    const mine = heads.filter(head => head !== trunkName && patterns.some(pattern => matches(pattern, head)))
-    if (mine.includes(branch)) isNamed = true
+  for (let index = 0; index < specs.length; index += 1) {
+    const spec = specs[index] as TrackSpec
+    const mine = named[index] ?? []
+    const extra = byFiles[index] ?? 0
+    const isGuessed = !isNamed && here?.kind === 'lane' && here.index === index
     const found = spec.stagingPath === undefined && spec.stagingBranch === undefined ? undefined : await stageOf($, cwd, trunkRef, spec, now)
     const tags = spec.tagPrefix === undefined ? '' : await git($, ['tag', '--sort=-creatordate', '--list', `${spec.tagPrefix}*`], cwd)
     const live = tags.split('\n')[0]?.trim()
@@ -195,8 +221,10 @@ export async function readLanes($: EngineInterface, cwd: string, trunkRef: strin
 
     lanes.push({
       name: spec.name,
-      branches: mine.length,
-      isHere: mine.includes(branch),
+      branches: mine.length + extra,
+      ...(extra > 0 ? { byFiles: extra } : {}),
+      isHere: mine.includes(branch) || isGuessed,
+      ...(isGuessed ? { isGuessed: true } : {}),
       ...(spec.isParked === true ? { isParked: true } : {}),
       ...(found === undefined ? {} : { staging: found.stage }),
       ...(live === undefined || live === '' ? {} : { live }),
@@ -205,14 +233,8 @@ export async function readLanes($: EngineInterface, cwd: string, trunkRef: strin
     })
   }
 
-  // A branch whose name claims no lane is placed by what it changed instead.
-  if (!isNamed && branch !== trunkName) {
-    const guessed = await laneOfFiles($, cwd, trunkRef, specs)
-    const lane = guessed === undefined ? undefined : lanes[guessed]
-    if (lane !== undefined) {
-      lanes[guessed as number] = { ...lane, isHere: true, isGuessed: true }
-    }
-  }
+  // Your branch was looked at by its files and could not be placed: say so, rather than go quietly dark.
+  const guess = isNamed || branch === trunkName || here === undefined || here.kind === 'lane' ? undefined : here.kind
 
-  return lanes
+  return { lanes, ...(guess === undefined ? {} : { guess }) }
 }
