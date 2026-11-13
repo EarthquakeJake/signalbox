@@ -1,0 +1,29 @@
+{
+  "tracks": [
+    {
+      "id": "board",
+      "name": "Board",
+      "branch": "board/",
+      "paths": ["hooks/draw.ts", "hooks/lanes.ts"]
+    },
+    {
+      "id": "data",
+      "name": "Data",
+      "branch": "data/",
+      "paths": ["hooks/git.ts", "hooks/tracks.ts", "hooks/paths.ts", "types/**"]
+    },
+    {
+      "id": "quality",
+      "name": "Quality",
+      "branch": "quality/",
+      "paths": ["hooks/*.test.tsx", "tools/**"]
+    },
+    {
+      "id": "release",
+      "name": "Release",
+      "branch": "release/",
+      "paths": ["hooks/register.tsx", "hooks/hooks.json", ".claude-plugin/**", "README.md", "LICENSE", "CLAUDE.md", "ROADMAP.md", "signalbox.tracks.json"],
+      "tag": "v"
+    }
+  ]
+}
