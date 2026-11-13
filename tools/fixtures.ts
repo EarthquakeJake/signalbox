@@ -442,3 +442,47 @@ FIXTURES.push(
     { a: 'app/routing-order', b: 'platform/branch-prefix', level: 'overlap', files: ['package.json'] },
   ]),
 )
+
+/**
+ * Silkscreen with its lanes' file globs and root, and this turn's edits as the
+ * host gives them: absolute paths. `mismatch` is Data's reading of a branch named
+ * for one lane whose files point at another.
+ */
+function withTurn(id: string, title: string, edited: string[], mismatch?: { named: string; byFiles: string }): Fixture {
+  const base = FIXTURES.find(f => f.id === 'silkscreen-same-as-live') as Fixture
+  const repo = base.board.repo as Extract<Repo, { kind: 'repo' }>
+  const globs: Record<string, string[]> = {
+    app: ['public/app/**', 'src/**'],
+    website: ['site/**', 'public/*.html', 'public/privacy/**', 'public/terms/**'],
+    platform: ['hooks/**'],
+    cloud: ['cloud/**'],
+  }
+  return {
+    ...base,
+    id,
+    title,
+    board: {
+      ...base.board,
+      edited,
+      repo: { ...repo, root: 'C:/Users/Jake/Documents/silkscreen', mismatch, lanes: (repo.lanes ?? []).map(lane => ({ ...lane, paths: globs[lane.id ?? ''] })) },
+    },
+  }
+}
+
+const SILK = 'C:/Users/Jake/Documents/silkscreen'
+FIXTURES.push(
+  // Windows paths and case, and one file in no lane, which does not count.
+  withTurn('turn-one-lane', 'This turn edited Website only (one file in no lane)', [
+    'C:\\Users\\Jake\\Documents\\Silkscreen\\site\\landing.css',
+    `${SILK}/site/index.html`,
+    `${SILK}/public/privacy/index.html`,
+    `${SILK}/site/hero.js`,
+    `${SILK}/README.md`,
+  ]),
+  withTurn('turn-two-lanes', "This turn's edits span App and Website", [
+    `${SILK}/site/landing.css`,
+    `${SILK}/public/app/index.html`,
+    `${SILK}/src/router.ts`,
+  ]),
+  withTurn('turn-mismatch', 'Branch named for App, its files are Website', [`${SILK}/site/landing.css`], { named: 'app', byFiles: 'website' }),
+)

@@ -1,4 +1,5 @@
 import type { Clash, Lane, OpenBranch } from '../types'
+import { covers } from './paths'
 
 // A dark circuit-board look in the Ink tokens. Silk marks what is running now;
 // copper marks connection points and where you are.
@@ -490,6 +491,53 @@ export function clashSummary(clashes: readonly Clash[] | undefined): Piece[] {
 /** A clash mark: a small dot in the clash's tone with a faint halo, so it reads at a glance beside a branch. */
 export const clashMark = (cx: number, cy: number, level: 'conflict' | 'overlap'): string =>
   `<circle cx="${cx}" cy="${cy}" r="5.5" fill="${clashInk(level)}" fill-opacity="0.18"/><circle cx="${cx}" cy="${cy}" r="3" fill="${clashInk(level)}"/>`
+
+/** The repository fields a turn's lane is read from. */
+type TurnSource = { lanes?: Lane[]; root?: string; mismatch?: { named: string; byFiles: string } }
+
+/** "App", "App and Website", "App, Website and Platform". */
+const andList = (names: readonly string[]): string =>
+  names.length <= 1 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+
+/**
+ * Where this turn's edits fall: the lanes whose track-file globs cover them,
+ * most edits first, and a warning in words where they span two or more lanes,
+ * or where the branch is named for one lane while its files point at another.
+ * Edited paths are made relative to the repository's root; those outside it, or
+ * in no lane, do not count. Nothing to say without a root or lanes with paths.
+ */
+export function turnLanes(edited: readonly string[], repo: TurnSource | undefined): { lanes: string[]; edits: number; warn?: string; warnShort?: string } {
+  const lanes = (repo?.lanes ?? []).filter(lane => (lane.paths ?? []).length > 0)
+  const counts = new Map<Lane, number>()
+  const root = (repo?.root ?? '').replace(/\\/g, '/').replace(/\/+$/, '')
+  if (root !== '') {
+    for (const path of edited) {
+      const full = path.replace(/\\/g, '/')
+      // Windows paths differ in case only by accident, so the root is matched without it.
+      if (full.toLowerCase().indexOf(`${root.toLowerCase()}/`) !== 0) continue
+      const rel = full.slice(root.length + 1)
+      const lane = lanes.find(l => (l.paths ?? []).some(glob => covers(glob, rel)))
+      if (lane !== undefined) counts.set(lane, (counts.get(lane) ?? 0) + 1)
+    }
+  }
+  const ordered = [...counts.entries()].sort((a, z) => z[1] - a[1]).map(([lane]) => lane.name)
+  const edits = [...counts.values()].reduce((n, c) => n + c, 0)
+  const nameOf = (id: string): string => (repo?.lanes ?? []).find(l => l.id === id || l.name === id)?.name ?? id
+  const warn =
+    ordered.length >= 2
+      ? `edits span ${andList(ordered)}`
+      : repo?.mismatch !== undefined
+        ? `named ${nameOf(repo.mismatch.named)}, files are ${nameOf(repo.mismatch.byFiles)}`
+        : undefined
+  // The same warning in fewer letters, for the wide tag.
+  const warnShort =
+    ordered.length >= 2
+      ? `spans ${ordered.join(' + ')}`
+      : repo?.mismatch !== undefined
+        ? `named ${nameOf(repo.mismatch.named)} · files ${nameOf(repo.mismatch.byFiles)}`
+        : undefined
+  return { lanes: ordered, edits, warn, warnShort }
+}
 
 /**
  * One lane as a card on the tall board: its tile and name with what is in
