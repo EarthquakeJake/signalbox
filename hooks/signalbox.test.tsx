@@ -1,5 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
+import { covers, matches } from './paths'
+
 const settle = (): Promise<void> => new Promise(resolve => setTimeout(resolve, 150))
 
 const pane = (bodyColumns: number, bodyRows: number) =>
@@ -108,4 +110,24 @@ test('declared lanes are drawn in place of the single track', async ($, on) => {
   expect(svg).toContain('parked')
   expect(svg).toContain('3 tracks')
   await ui.unmount()
+})
+
+test('path globs place a file in the right lane', () => {
+  // `**` spans folders, `*` stays inside one, as a project's track file means them.
+  expect(covers('app/**', 'app/src/main.ts')).toBe(true)
+  expect(covers('app/**', 'site/src/main.ts')).toBe(false)
+  expect(covers('public/*.html', 'public/index.html')).toBe(true)
+  expect(covers('public/*.html', 'public/uat/index.html')).toBe(false)
+  expect(covers('**/tracks.json', 'tools/tracks.json')).toBe(true)
+  expect(covers('**/tracks.json', 'tracks.json')).toBe(true)
+  expect(covers('review/**', 'review/qa/notes.md')).toBe(true)
+  // A glob that cannot compile must refuse rather than throw.
+  expect(covers('app/[', 'app/[')).toBe(true)
+})
+
+test('branch patterns match by name', () => {
+  expect(matches('app/*', 'app/landing')).toBe(true)
+  expect(matches('app/*', 'site/landing')).toBe(false)
+  expect(matches('feature/app-*', 'feature/app-wires')).toBe(true)
+  expect(matches('app/*', 'app/deep/branch')).toBe(true)
 })

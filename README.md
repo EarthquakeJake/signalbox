@@ -97,12 +97,15 @@ Both spellings above are read, so a file written for something else often works 
 | --- | --- |
 | `name`, or `id` | What the lane is called. |
 | `branch` (a prefix) or `branches` (patterns, where `*` stands for anything) | Which open branches belong to this lane. |
+| `paths` (globs, where `**` spans folders and `*` stays inside one) | The files this lane owns. Used only to place a branch whose name claims no lane. |
 | `uat.branch` or `staging.branch` | A branch that is this lane's staging; `origin/` is tried too. |
 | `staging.path` | A folder on the trunk whose newest commit means staging moved. |
 | `tag` or `live.tagPrefix` | The start of this lane's release tags, so the newest one can be shown. |
 | `parked` | Draws the lane set back, as one not in play. |
 
-Everything else in the file is ignored. All four settings above are ignored once a track file is found: the file decides. Where a lane has an `id` and a tag `uat-passed/<id>` sits on the very commit its staging stands at, the lane is marked as having passed its checks.
+Everything else in the file is ignored. All four settings above are ignored once a track file is found: the file decides.
+
+Where the branch you are on matches no lane's name pattern — the branches the desktop app names for you, say — Signalbox asks git which files that branch changed and lights the lane owning most of them, saying `lane from files` beside the branch name so you know it was worked out rather than declared. It is one diff, kept until the branch moves, and it needs `paths` on the lanes. The branch counts beside each lane still go by name alone. Where a lane has an `id` and a tag `uat-passed/<id>` sits on the very commit its staging stands at, the lane is marked as having passed its checks.
 
 ## What it reads, and what it does not
 
@@ -122,7 +125,7 @@ It makes no network requests of its own, and calls no model. It never changes or
 
 ## Status
 
-Version 0.5.5, an early release. Both layouts have been rendered and looked at, with lanes and without. Built and tried on Claude Code 2.1.321 in the desktop app on Windows. Other surfaces are covered by the mod's tests but have not been tried by hand. The test engine serves no processes, so the git reading is covered by its failing case alone and was checked by hand in a real repository.
+Version 0.6.0, an early release. Both layouts have been rendered and looked at, with lanes and without. Built and tried on Claude Code 2.1.321 in the desktop app on Windows. Other surfaces are covered by the mod's tests but have not been tried by hand. The test engine serves no processes, so the git reading is covered by its failing case alone and was checked by hand in a real repository.
 
 ## Development
 

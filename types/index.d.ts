@@ -32,6 +32,8 @@ export type TrackSpec = {
   stagingBranch?: string
   /** The start of the tag names that mark this lane's releases, such as `app-`. */
   tagPrefix?: string
+  /** The files this lane owns, as globs: `**` spans folders, `*` stays inside one. */
+  paths?: string[]
   /** True for a lane the project has set aside. */
   isParked?: boolean
 }
@@ -50,6 +52,8 @@ export type Lane = {
   isPassed?: boolean
   /** Whether the branch you are on has already reached this lane's staging. */
   hasYours?: boolean
+  /** True where this lane was worked out from the files changed, not from the branch name. */
+  isGuessed?: boolean
   /** True for a lane the project has set aside. */
   isParked?: boolean
 }

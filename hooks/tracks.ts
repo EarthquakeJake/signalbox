@@ -1,6 +1,7 @@
 import type { EngineInterface } from 'claude-code'
 
 import type { Lane, Stage, TrackSpec } from '../types'
+import { covers, matches } from './paths'
 
 /** Where a project may declare its lanes; the first one found wins. */
 const FILES = ['signalbox.tracks.json', 'tracks.json']
@@ -31,11 +32,40 @@ const text = (value: unknown): string => (typeof value === 'string' ? value.trim
 
 const list = (value: unknown): string[] => (Array.isArray(value) ? value.map(text).filter(one => one !== '') : [])
 
-/** A name pattern, where `*` stands for any run of characters. */
-const matches = (pattern: string, name: string): boolean => {
-  const source = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')
 
-  return new RegExp(`^${source}$`).test(name)
+// The files a branch changed, kept against the commit they were read at, so the
+// diff runs when the branch moves and not on every refresh.
+let seenAt: string | undefined
+let seenFiles: string[] = []
+
+/**
+ * The lane a branch belongs to when its name does not say: the one owning most
+ * of the files it changed. One diff, and only for the branch you are on.
+ */
+async function laneOfFiles($: EngineInterface, cwd: string, trunkRef: string, specs: readonly TrackSpec[]): Promise<number | undefined> {
+  if (!specs.some(spec => (spec.paths ?? []).length > 0)) return undefined
+  const at = await git($, ['rev-parse', 'HEAD'], cwd)
+  if (at === '') return undefined
+  if (at !== seenAt) {
+    const changed = await git($, ['diff', '--name-only', `${trunkRef}...HEAD`], cwd)
+    seenAt = at
+    seenFiles = changed.split('\n').map(one => one.trim()).filter(one => one !== '')
+  }
+  if (seenFiles.length === 0) return undefined
+
+  let best: number | undefined
+  let most = 0
+  for (let index = 0; index < specs.length; index += 1) {
+    const globs = specs[index]?.paths ?? []
+    if (globs.length === 0) continue
+    const count = seenFiles.filter(file => globs.some(glob => covers(glob, file))).length
+    if (count > most) {
+      most = count
+      best = index
+    }
+  }
+
+  return best
 }
 
 /**
@@ -79,6 +109,7 @@ export async function readSpecs($: EngineInterface, cwd: string): Promise<TrackS
         ...(stagingPath === '' ? {} : { stagingPath }),
         ...(stagingBranch === '' ? {} : { stagingBranch }),
         ...(tagPrefix === '' ? {} : { tagPrefix }),
+        ...(list(one.paths).length === 0 ? {} : { paths: list(one.paths) }),
         ...(one.parked === true ? { isParked: true } : {}),
       })
     }
@@ -140,9 +171,11 @@ export async function readLanes($: EngineInterface, cwd: string, trunkRef: strin
   const trunkName = trunkRef.replace(/^origin\//, '')
 
   const lanes: Lane[] = []
+  let isNamed = false
   for (const spec of specs) {
     const patterns = spec.branches ?? []
     const mine = heads.filter(head => head !== trunkName && patterns.some(pattern => matches(pattern, head)))
+    if (mine.includes(branch)) isNamed = true
     const found = spec.stagingPath === undefined && spec.stagingBranch === undefined ? undefined : await stageOf($, cwd, trunkRef, spec, now)
     const tags = spec.tagPrefix === undefined ? '' : await git($, ['tag', '--sort=-creatordate', '--list', `${spec.tagPrefix}*`], cwd)
     const live = tags.split('\n')[0]?.trim()
@@ -170,6 +203,15 @@ export async function readLanes($: EngineInterface, cwd: string, trunkRef: strin
       ...(isPassed === undefined ? {} : { isPassed }),
       ...(hasYours === undefined ? {} : { hasYours }),
     })
+  }
+
+  // A branch whose name claims no lane is placed by what it changed instead.
+  if (!isNamed && branch !== trunkName) {
+    const guessed = await laneOfFiles($, cwd, trunkRef, specs)
+    const lane = guessed === undefined ? undefined : lanes[guessed]
+    if (lane !== undefined) {
+      lanes[guessed as number] = { ...lane, isHere: true, isGuessed: true }
+    }
   }
 
   return lanes
