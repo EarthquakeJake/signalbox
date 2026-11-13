@@ -18,6 +18,8 @@ Signalbox is a mod for Claude Code (a plugin that adds a pane). It runs locally.
   With `stagingPath` set: **your branch**, **staging** (when that folder was last touched on the trunk, and how many commits the trunk has taken since) and **live** (the newest tag on the trunk). The caption carries the subject of the commit that last updated staging.
 
   A stop lights up when there is work of yours sitting at it.
+
+- **Or one lane per deployable part**, where the project declares them in a track file. Each lane is a row: its name and what is live on it, then its open branches and its staging, all hung off one bus. The lane you are working in is the lit one.
 - **A short feed.** The last four actions, under the board.
 
 ## Two layouts, chosen for you
@@ -62,6 +64,45 @@ Start a new session afterwards. The pane opens by itself; `/signalbox` opens it 
 
 A project whose staging is a published folder rather than a branch is the case `stagingPath` is for: the newest commit touching that folder is taken as the moment staging was last updated.
 
+## The track file
+
+A project with more than one deployable part declares its lanes in `signalbox.tracks.json`, or in a `tracks.json`, at the root of the repository. Up to four lanes are drawn, and the file replaces the single track above.
+
+```json
+{
+  "tracks": [
+    {
+      "id": "app",
+      "name": "App",
+      "branch": "app/",
+      "uat": { "branch": "uat/app" },
+      "tag": "app-v"
+    },
+    {
+      "id": "site",
+      "name": "Site",
+      "branches": ["site/*", "feature/site-*"],
+      "staging": { "path": "public/uat/site" },
+      "live": { "tagPrefix": "site-" }
+    },
+    { "id": "cloud", "name": "Cloud", "branch": "cloud/", "parked": true }
+  ]
+}
+```
+
+Both spellings above are read, so a file written for something else often works as it is:
+
+| What a lane may say | Meaning |
+| --- | --- |
+| `name`, or `id` | What the lane is called. |
+| `branch` (a prefix) or `branches` (patterns, where `*` stands for anything) | Which open branches belong to this lane. |
+| `uat.branch` or `staging.branch` | A branch that is this lane's staging; `origin/` is tried too. |
+| `staging.path` | A folder on the trunk whose newest commit means staging moved. |
+| `tag` or `live.tagPrefix` | The start of this lane's release tags, so the newest one can be shown. |
+| `parked` | Draws the lane set back, as one not in play. |
+
+Everything else in the file is ignored. Where a lane has an `id` and a tag `uat-passed/<id>` sits on the very commit its staging stands at, the lane is marked as having passed its checks.
+
 ## What it reads, and what it does not
 
 Signalbox listens to the session's own events: when a turn starts and ends, when the model takes a step, and when a tool is called. From a tool call it keeps the tool's name and a few words for the feed (a file's name, a command's description). It keeps this in the session's state and nowhere else.
@@ -72,13 +113,13 @@ It makes no network requests of its own, reads no files, and calls no model. It 
 
 ## Roadmap
 
-- **Several tracks at once.** One lane per deployable part of a project, each with its own branch, staging and live stops.
 - **Real deploy status.** What a stage is actually serving, where a project has a source for that, rather than inferring it from commits.
+- **A view switch.** Tracks, a branch history and a board, switchable under the board.
 - **More views.** A tracks view and a spine view of all open branches, switchable under the board.
 
 ## Status
 
-Version 0.3.0, an early release. Built and tried on Claude Code 2.1.321 in the desktop app on Windows. Other surfaces are covered by the mod's tests but have not been tried by hand. The test engine serves no processes, so the git reading is covered by its failing case alone and was checked by hand in a real repository.
+Version 0.4.0, an early release. Built and tried on Claude Code 2.1.321 in the desktop app on Windows. Other surfaces are covered by the mod's tests but have not been tried by hand. The test engine serves no processes, so the git reading is covered by its failing case alone and was checked by hand in a real repository.
 
 ## Development
 

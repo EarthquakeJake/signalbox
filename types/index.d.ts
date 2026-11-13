@@ -19,6 +19,39 @@ export type Stage = {
   behind: number
 }
 
+/** A lane a project declares in its track file: one deployable part of it. */
+export type TrackSpec = {
+  name: string
+  /** The lane's own id, where it has one; the checks tag is named after it. */
+  id?: string
+  /** Name patterns for the branches that belong to this lane; `*` stands for anything. */
+  branches?: string[]
+  /** A folder on the trunk whose newest commit means this lane's staging moved. */
+  stagingPath?: string
+  /** A branch that is this lane's staging, where it has one of its own. */
+  stagingBranch?: string
+  /** The start of the tag names that mark this lane's releases, such as `app-`. */
+  tagPrefix?: string
+  /** True for a lane the project has set aside. */
+  isParked?: boolean
+}
+
+/** One lane as it stands now. */
+export type Lane = {
+  name: string
+  /** Open branches that belong to this lane. */
+  branches: number
+  /** True while the branch you are on is one of them. */
+  isHere: boolean
+  staging?: Stage
+  /** The newest tag of this lane, which usually names what is live. */
+  live?: string
+  /** Whether this lane's checks passed on what staging holds now. */
+  isPassed?: boolean
+  /** True for a lane the project has set aside. */
+  isParked?: boolean
+}
+
 /** What git says about the folder this session works in. */
 export type Repo =
   | { kind: 'none' }
@@ -42,6 +75,8 @@ export type Repo =
       staging?: Stage
       /** The newest tag on the trunk, which usually names what is live. */
       tag?: string
+      /** The lanes the project declares, where it declares any. */
+      lanes?: Lane[]
     }
 
 export type Board = {

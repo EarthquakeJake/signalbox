@@ -1,6 +1,7 @@
 import type { EngineInterface } from 'claude-code'
 
-import type { Repo, Stage } from '../types'
+import type { Lane, Repo, Stage } from '../types'
+import { readLanes, readSpecs } from './tracks'
 
 const NONE: Repo = { kind: 'none' }
 
@@ -98,9 +99,13 @@ export async function readRepo($: EngineInterface, cwd: string, asked: string, s
 
   let staging: Stage | undefined
   let tag: string | undefined
+  let lanes: Lane[] | undefined
   if (trunkRef !== undefined) {
-    if (stagingPath !== '') {
-      const now = await $.clock.now()
+    const now = await $.clock.now()
+    const specs = await readSpecs($, cwd)
+    if (specs.length > 0) {
+      lanes = await readLanes($, cwd, trunkRef, specs, branch, now)
+    } else if (stagingPath !== '') {
       staging = await stageOf($, cwd, trunkRef, stagingPath, now)
     }
     tag = said(await git($, ['describe', '--tags', '--abbrev=0', trunkRef], cwd)) || undefined
@@ -117,5 +122,6 @@ export async function readRepo($: EngineInterface, cwd: string, asked: string, s
     ...(upstream === '' ? {} : { unpushed: unpushed ?? 0 }),
     ...(staging === undefined ? {} : { staging }),
     ...(tag === undefined ? {} : { tag }),
+    ...(lanes === undefined || lanes.length === 0 ? {} : { lanes }),
   }
 }

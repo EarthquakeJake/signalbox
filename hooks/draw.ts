@@ -1,4 +1,5 @@
 import type { Board, StationId } from '../types'
+import { TALL_LANES, WIDE_LANES, agoOf, drawLanes, laneHeight } from './lanes'
 
 // A dark circuit-board look. Off-white marks what Claude is doing now; copper marks connection points.
 const C = {
@@ -104,17 +105,6 @@ function wire(d: string, wear: Wear): string {
     `<path d="${d}" fill="none" stroke="${C.accent}" stroke-width="5" opacity="0.18"/>` +
     `<path d="${d}" fill="none" stroke="${C.accent}" stroke-width="1.75" stroke-dasharray="8 4"><animate attributeName="stroke-dashoffset" from="12" to="0" dur="0.6s" repeatCount="indefinite"/></path>`
   )
-}
-
-/** How long ago, in the fewest characters that still say it. */
-const agoOf = (then: number, now: number): string => {
-  const mins = Math.max(0, Math.round((now - then) / 60000))
-  if (mins < 1) return 'just now'
-  if (mins < 60) return `${mins}m ago`
-  const hours = Math.round(mins / 60)
-  if (hours < 48) return `${hours}h ago`
-
-  return `${Math.round(hours / 24)}d ago`
 }
 
 export type TrackNames = { staging: string; live: string }
@@ -226,6 +216,8 @@ export function drawBoard(b: Board, isWide: boolean, names: TrackNames, now: num
             },
           ]
 
+  const lanes = here?.lanes ?? []
+  const shape = isWide ? WIDE_LANES : TALL_LANES
   const [n1, n2, n3] = L.nodes
   const anchorOf = (at: number, x: number): string =>
     isWide || at === 1 ? `x="${x}" text-anchor="middle"` : at === 0 ? `x="${x - 14}" text-anchor="start"` : `x="${x + 14}" text-anchor="end"`
@@ -244,16 +236,23 @@ export function drawBoard(b: Board, isWide: boolean, names: TrackNames, now: num
       `<text ${anchorOf(at, x)} y="${L.labelY}" ${SANS} font-size="11" fill="${stop.isLit ? C.hl : C.muted}">${esc(stop.name)}</text>` +
       (stop.under === '' ? '' : `<text ${anchorOf(at, x)} y="${L.labelY + 15}" ${SANS} font-size="11" fill="${C.muted}">${esc(stop.under)}</text>`)
   }
-  track += `<text x="${L.caption.x}" y="${L.caption.y}" ${SANS} font-size="11" fill="${C.muted}">${here === undefined ? (repo === undefined ? 'Reading the repository…' : 'No git repository in this folder') : here.staging === undefined ? 'Release track' : esc(short(here.staging.subject, isWide ? 46 : 34))}</text>`
+  if (lanes.length > 0) {
+    track =
+      wire(isWide ? `M630 145H${shape.bus}` : `M220 310V318Q220 326 212 326H${shape.bus + 8}Q${shape.bus} 326 ${shape.bus} 334`, flow) +
+      drawLanes(lanes, shape, now, C, SANS, MONO)
+  }
+  track += `<text x="${L.caption.x}" y="${L.caption.y}" ${SANS} font-size="11" fill="${C.muted}">${here === undefined ? (repo === undefined ? 'Reading the repository…' : 'No git repository in this folder') : lanes.length > 0 ? `${lanes.length} tracks · ${esc(short(here.branch, isWide ? 30 : 22))}` : here.staging === undefined ? 'Release track' : esc(short(here.staging.subject, isWide ? 46 : 34))}</text>`
 
   const headY = isWide ? 16 : 24
   const head =
     `<text x="16" y="${headY}" ${SANS} font-size="11" font-weight="600" letter-spacing="0.6" fill="${C.muted}">NOW</text>` +
     `<text x="${L.w - 16}" y="${headY}" text-anchor="end" ${MONO} font-size="11" fill="${C.muted}">${b.calls} tool call${b.calls === 1 ? '' : 's'} this turn</text>`
 
+  const H = lanes.length === 0 || isWide ? L.h : Math.max(L.h, laneHeight(lanes.length, shape))
+
   return (
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${L.w} ${L.h}" width="${L.w}" height="${L.h}">` +
-    `<rect width="${L.w}" height="${L.h}" rx="12" fill="${C.canvas}"/>` +
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${L.w} ${H}" width="${L.w}" height="${H}">` +
+    `<rect width="${L.w}" height="${H}" rx="12" fill="${C.canvas}"/>` +
     head + wires + wire(L.merge, flow) + wire(L.route, flow) + core + chips + pins + tag + track +
     `</svg>`
   )
