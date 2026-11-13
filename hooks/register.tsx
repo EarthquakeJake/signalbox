@@ -160,35 +160,45 @@ export function isWidePane(columns: number, rows: number): boolean {
 }
 
 /**
- * A pane cell in CSS pixels. A desktop surface counts the pane in cells of its
- * code font (its advance and line height), and says nothing of the font's size,
- * so these are a low guess: around a 12–13 px monospace. Guessing low makes the
- * drawing a little smaller than the room; guessing high would cut it off.
+ * The height of a pane row in CSS pixels: the line height of the desktop's
+ * code font, which the surface counts the pane's rows in and does not report.
+ * A 13 px monospace at its usual line height. Only the height leans on this:
+ * the width is left to the host, which fits the drawing to the slot exactly.
  */
-export const CELL = { w: 7, h: 17 }
-/** The drawing is never shrunk below this, so its 11 px text stays readable; a smaller pane scrolls. */
+export const ROW = 19
+/** The drawing's height is never held below this share of its own, so its text stays readable; a shorter pane scrolls. */
 export const LEAST = 0.6
-/** Nor grown past this, so a broad pane does not blow it up. */
+/** Nor is it grown past this, so a broad, tall pane does not blow it up. */
 export const MOST = 1.5
 
 /**
- * The CSS size to draw an SVG at in a pane `columns` by `rows` cells, `rows`
- * being what is left after anything stacked under it: as large as fits both
- * ways with its shape kept, between LEAST and MOST of its own size.
+ * The size an SVG asks to be drawn at in a pane with `rows` rows for it: as
+ * tall as the rows hold, with its shape kept, between LEAST and MOST of its own
+ * size. The host draws a Svg given no width at the markup's own width up to the
+ * slot, height following, so the width is fitted by the host to the pixel and
+ * follows a drag as it happens; this only sees that the height fits too.
  */
-export function fitPicture(svg: string, columns: number, rows: number): { width: number; height: number } {
+export function fitPicture(svg: string, rows: number): { width: number; height: number } {
   const box = /viewBox="0 0 ([\d.]+) ([\d.]+)"/.exec(svg)
   const w = box === null ? 440 : Number(box[1])
   const h = box === null ? 440 : Number(box[2])
-  const room = Math.min((Math.max(columns, 1) * CELL.w) / w, (Math.max(rows, 1) * CELL.h) / h)
-  const scale = Math.min(MOST, Math.max(LEAST, room))
+  const scale = Math.min(MOST, Math.max(LEAST, (Math.max(rows, 1) * ROW) / h))
 
-  return { width: Math.floor(w * scale), height: Math.floor(h * scale) }
+  return { width: Math.round(w * scale), height: Math.round(h * scale) }
 }
+
+/** The SVG with its own width and height set to `fitPicture`'s, for the host to fit to the slot. */
+export function sizedPicture(svg: string, rows: number): string {
+  const { width, height } = fitPicture(svg, rows)
+  return svg.replace(/^<svg\b[^>]*>/, tag => tag.replace(/\swidth="[^"]*"/, ` width="${width}"`).replace(/\sheight="[^"]*"/, ` height="${height}"`))
+}
+
+/** The feed under the tall board: at most four calls, and the gap above them. Kept whole, so the board does not jump as calls arrive. */
+const FEED_ROWS = 4 + 1
 
 /** When a desktop pane was last drawn; the redraw tick stops once it has not been for a while. */
 let paneDrawnAt = 0
-const NUDGE = 2000
+const NUDGE = 1000
 
 export const register: Register = (on, options) => {
   asked = typeof options?.trunkBranch === 'string' ? options.trunkBranch.trim() : ''
@@ -208,7 +218,7 @@ export const register: Register = (on, options) => {
       // A quiet heartbeat, so a commit or a checkout made outside this session still shows.
       void quietly(async () => $.clock.every(20000, () => void refresh($, false)))
       // The host does not redraw a pane whose height alone changed, so while a
-      // desktop pane is showing it is asked to draw again every two seconds and
+      // desktop pane is showing it is asked to draw again every second and
       // so read its size afresh. Each redraw marks the pane drawn, which keeps
       // the tick going; once the pane is closed nothing is drawn and it stops.
       void quietly(async () =>
@@ -326,23 +336,22 @@ export const register: Register = (on, options) => {
     const picture = state.view === 'spine' ? drawSpine(state, isWide, now) : drawBoard(state, isWide, names, now)
     paneDrawnAt = now
 
-    // Sized to the pane both ways, its shape kept, and centred.
+    // Its own size set for the pane's height; the host fits the width. No width
+    // is passed, so the host keeps it to the slot and scales it as the pane is dragged.
     // The wide board draws the feed itself, under the tag, where a short pane cannot cut it off.
     if (isWide) {
-      const size = fitPicture(picture, e.props.bodyColumns, e.props.scroll.bodyRows)
       return (
         <Box flexDirection="column" alignItems="center">
-          <Svg source={picture} alt={alt} width={size.width} height={size.height} />
+          <Svg source={sizedPicture(picture, e.props.scroll.bodyRows)} alt={alt} />
         </Box>
       )
     }
 
-    // The feed's lines and the gap above them come out of the drawing's room.
-    const size = fitPicture(picture, e.props.bodyColumns, e.props.scroll.bodyRows - feed.length - 1)
+    // The feed's rows and the gap above them come out of the drawing's room.
     return (
       <Box flexDirection="column" gap={1}>
         <Box flexDirection="column" alignItems="center">
-          <Svg source={picture} alt={alt} width={size.width} height={size.height} />
+          <Svg source={sizedPicture(picture, e.props.scroll.bodyRows - FEED_ROWS)} alt={alt} />
         </Box>
         <Box flexDirection="column">{feed}</Box>
       </Box>
