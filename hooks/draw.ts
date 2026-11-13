@@ -252,7 +252,7 @@ function tallRelease(b: Board, names: TrackNames, now: number, flow: Wear): { sv
   const colours = laneColours(lanes)
   let y = 424
   for (const lane of rest) {
-    const card = laneCard(lane, y + 6, now, colours.get(lane) ?? C.muted, names.staging)
+    const card = laneCard(lane, y + 6, now, colours.get(lane) ?? C.muted, names.staging, here)
     out += card.svg
     y += 6 + card.h
   }

@@ -1,4 +1,4 @@
-import type { Lane, OpenBranch } from '../types'
+import type { Clash, Lane, OpenBranch } from '../types'
 
 // A dark circuit-board look in the Ink tokens. Silk marks what is running now;
 // copper marks connection points and where you are.
@@ -361,23 +361,74 @@ export const isMadeUpName = (name: string): boolean => {
  * name gives way to its commit subject; a chosen name stays, with the subject after
  * it in muted type where there is room. The ahead count follows the lead words.
  */
-export function branchWords(b: OpenBranch, x: number, y: number, room: number): string {
+export function branchWords(b: OpenBranch, x: number, y: number, room: number, note?: ClashNote): string {
   const ahead = `+${b.ahead}`
   const aheadW = monoWidth(ahead) + 8
   const subject = b.subject?.trim() ?? ''
   if (subject !== '' && isMadeUpName(b.name)) {
-    const lead = fit(subject, room - aheadW)
-    return text(x, y, esc(lead), { fill: C.text }) + text(x + widthOf(lead) + 8, y, ahead, { font: 'mono' })
+    // A clash takes the second half of the row; the subject keeps the first.
+    const lead = fit(subject, note === undefined ? room - aheadW : Math.max(room * 0.45, room - aheadW - widthOf(note.words) - 8))
+    let out = text(x, y, esc(lead), { fill: C.text }) + text(x + widthOf(lead) + 8, y, ahead, { font: 'mono' })
+    const after = x + widthOf(lead) + 8 + aheadW + 4
+    if (note !== undefined && x + room - after >= 48) out += text(after, y, esc(fit(note.words, x + room - after)), { fill: note.ink })
+    return out
   }
-  const nameRoom = subject === '' ? room - aheadW : Math.max(room * 0.55, Math.min(room - aheadW, 120))
+  const nameRoom = subject === '' && note === undefined ? room - aheadW : Math.max(room * 0.55, Math.min(room - aheadW, 120))
   const shown = branchIn(b.name, nameRoom - aheadW)
   let out = text(x, y, esc(shown), { font: 'mono', fill: C.text }) + text(x + monoWidth(shown) + 8, y, ahead, { font: 'mono' })
   const after = x + monoWidth(shown) + aheadW + 4
   const left = x + room - after
-  if (subject !== '' && left >= 48) out += text(after, y, esc(fit(subject, left)))
+  // A clash says itself in place of the subject: it is the more urgent of the two.
+  if (note !== undefined && left >= 48) out += text(after, y, esc(fit(note.words, left)), { fill: note.ink })
+  else if (subject !== '' && left >= 48) out += text(after, y, esc(fit(subject, left)))
 
   return out
 }
+
+/** A branch's worst clash, ready to draw: its level and tone, the other branch in words, and what is involved. */
+export type ClashNote = { level: 'conflict' | 'overlap'; ink: string; other: string; words: string; files: string[]; isUncommitted: boolean }
+
+/** The repository fields clash notes are read from. */
+type ClashSource = { clashes?: Clash[]; lanes?: Lane[]; loose?: OpenBranch[] }
+
+/** Red for a conflict (git says the two will not merge cleanly), amber for an overlap (same files, merging cleanly for now). */
+export const clashInk = (level: 'conflict' | 'overlap'): string => (level === 'conflict' ? TONE.danger.ink : TONE.warn.ink)
+
+/** A branch said by its newest commit's subject where it has one, else by its name. */
+export function branchSaid(repo: ClashSource, name: string): string {
+  const entry = [...(repo.lanes ?? []).flatMap(lane => lane.open ?? []), ...(repo.loose ?? [])].find(b => b.name === name)
+  const subject = entry?.subject?.trim() ?? ''
+  return subject === '' ? name : subject
+}
+
+/**
+ * The worst clash a branch is part of, from the repository's list, with the other
+ * branch said by its description. Where the list does not name it but the branch
+ * is marked (`fallback`), the other side is "another branch".
+ */
+export function clashOf(repo: ClashSource, name: string, fallback?: 'conflict' | 'overlap'): ClashNote | undefined {
+  const found = (repo.clashes ?? []).filter(c => c.a === name || c.b === name).sort((p, q) => Number(q.level === 'conflict') - Number(p.level === 'conflict'))[0]
+  const level = found?.level ?? fallback
+  if (level === undefined) return undefined
+  const other = found === undefined ? 'another branch' : branchSaid(repo, found.a === name ? found.b : found.a)
+  const isUncommitted = found?.isUncommitted === true
+  const verb = level === 'conflict' ? 'conflicts with' : 'same files as'
+  return { level, ink: clashInk(level), other, words: `${isUncommitted ? 'uncommitted, ' : ''}${verb} ${other}`, files: found?.files ?? [], isUncommitted }
+}
+
+/** "1 conflict · 2 overlaps" as coloured pieces, or none at all when the repository is clean. */
+export function clashSummary(clashes: readonly Clash[] | undefined): Piece[] {
+  const conflicts = (clashes ?? []).filter(c => c.level === 'conflict').length
+  const overlaps = (clashes ?? []).filter(c => c.level === 'overlap').length
+  const out: Piece[] = []
+  if (conflicts > 0) out.push({ words: `${conflicts} ${conflicts === 1 ? 'conflict' : 'conflicts'}`, fill: TONE.danger.ink })
+  if (overlaps > 0) out.push({ words: `${out.length > 0 ? ' · ' : ''}${overlaps} ${overlaps === 1 ? 'overlap' : 'overlaps'}`, fill: TONE.warn.ink })
+  return out
+}
+
+/** A clash mark: a small dot in the clash's tone with a faint halo, so it reads at a glance beside a branch. */
+export const clashMark = (cx: number, cy: number, level: 'conflict' | 'overlap'): string =>
+  `<circle cx="${cx}" cy="${cy}" r="5.5" fill="${clashInk(level)}" fill-opacity="0.18"/><circle cx="${cx}" cy="${cy}" r="3" fill="${clashInk(level)}"/>`
 
 /**
  * One lane as a card on the tall board: its tile and name with what is in
@@ -385,7 +436,7 @@ export function branchWords(b: OpenBranch, x: number, y: number, room: number): 
  * its open branches with how far ahead they are, and a pill where one is far
  * behind or stale. Returns the drawing and its height.
  */
-export function laneCard(lane: Lane, top: number, now: number, colour: string, stagingName: string): { svg: string; h: number } {
+export function laneCard(lane: Lane, top: number, now: number, colour: string, stagingName: string, source?: ClashSource): { svg: string; h: number } {
   // Option A, "Board, slimmer": a 46 px head (tile, name, live pill; staging under it), then the branches at 18 px.
   const inner = 412
   const open = lane.open ?? []
@@ -418,8 +469,10 @@ export function laneCard(lane: Lane, top: number, now: number, colour: string, s
       out += p.svg
       edge = p.left - 6
     }
-    out += `<circle cx="56" cy="${mid}" r="2.5" fill="${colour}"/>`
-    out += branchWords(b, 64, mid + 4, edge - 4 - 64)
+    // A clashing branch's dot takes the clash's tone, and the clash is said in place of its subject.
+    const note = source === undefined ? undefined : clashOf(source, b.name, b.clash)
+    out += note === undefined ? `<circle cx="56" cy="${mid}" r="2.5" fill="${colour}"/>` : clashMark(56, mid, note.level)
+    out += branchWords(b, 64, mid + 4, edge - 4 - 64, note)
   })
   if (more > 0 && open.length > 0) out += text(64, top + 60 + open.length * 18, `+${more} more`)
 
