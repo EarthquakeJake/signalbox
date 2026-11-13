@@ -139,6 +139,7 @@ export async function readRepo($: EngineInterface, cwd: string, asked: string, s
   let tag: string | undefined
   let lanes: Lane[] | undefined
   let guess: 'none' | 'tied' | undefined
+  let merged: number | undefined
   if (trunkRef !== undefined) {
     const now = await $.clock.now()
     const specs = await readSpecs($, cwd)
@@ -146,6 +147,7 @@ export async function readRepo($: EngineInterface, cwd: string, asked: string, s
       const placed = await readLanes($, cwd, trunkRef, specs, branch, now)
       lanes = placed.lanes
       guess = placed.guess
+      merged = placed.merged
     } else if (stagingRef !== '') {
       const found = await refOf($, cwd, stagingRef)
       if (found !== undefined) staging = await stageOf($, cwd, trunkRef, found, now, true)
@@ -168,5 +170,6 @@ export async function readRepo($: EngineInterface, cwd: string, asked: string, s
     ...(tag === undefined ? {} : { tag }),
     ...(lanes === undefined || lanes.length === 0 ? {} : { lanes }),
     ...(guess === undefined || lanes === undefined || lanes.length === 0 ? {} : { guess }),
+    ...(merged === undefined ? {} : { merged }),
   }
 }
