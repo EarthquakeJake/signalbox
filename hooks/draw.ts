@@ -85,6 +85,21 @@ const WIDE: Layout = {
 
 const esc = (text: string): string => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
+/** Rough widths of 11px sans letters, enough to keep a name clear of a wire. */
+const widthOf = (letter: string): number =>
+  /[MW@%]/.test(letter) ? 10 : /[mw]/.test(letter) ? 8.6 : /[A-Z0-9#&]/.test(letter) ? 7.6 : /[iljtfr.,:;'|!\/ ()\[\]-]/.test(letter) ? 3.8 : 5.8
+
+/** Text cut to a width in pixels rather than a count of letters, so wide letters cannot run long. */
+export const fit = (text: string, most: number): string => {
+  let used = 0
+  for (let at = 0; at < text.length; at += 1) {
+    used += widthOf(text[at] as string)
+    if (used > most) return `${text.slice(0, Math.max(1, at - 1))}…`
+  }
+
+  return text
+}
+
 export const short = (text: string, most: number): string => (text.length <= most ? text : `${text.slice(0, most - 1)}…`)
 
 /** `claude-fable-5-2` reads as `fable 5.2`. */
@@ -251,10 +266,27 @@ export function drawBoard(b: Board, isWide: boolean, names: TrackNames, now: num
       ) +
       drawLanes(lanes, shape, now, C, SANS, MONO)
   }
-  const capX = lanes.length > 0 ? shape.right : L.caption.x
-  const capY = lanes.length > 0 ? shape.top - 14 : L.caption.y
-  const capAnchor = lanes.length > 0 ? ' text-anchor="end"' : ''
-  track += `<text x="${capX}" y="${capY}"${capAnchor} ${SANS} font-size="11" fill="${C.muted}">${here === undefined ? (repo === undefined ? 'Reading the repository…' : repo.kind === 'blocked' ? `Git did not run: ${esc(short(repo.why, isWide ? 50 : 36))}` : repo.why === undefined ? 'No git repository in this folder' : `Git said: ${esc(short(repo.why, isWide ? 50 : 34))}`) : lanes.length > 0 ? `${lanes.length} tracks · ${esc(short(here.branch, isWide ? 30 : 22))}${lanes.some(lane => lane.isGuessed === true) ? ' · lane from files' : here.guess === 'tied' ? ' · lanes tied in files' : here.guess === 'none' ? ' · no lane in files' : ''}` : here.staging === undefined ? 'Release track' : esc(short(here.staging.subject, isWide ? 46 : 34))}</text>`
+  // With lanes, the caption names the branch and how its lane was found. On the
+  // tall board the feed wire comes down at x=220 just above the lanes, so the
+  // branch sits left of it and the marker right of it, and nothing crosses text.
+  const marker = lanes.some(lane => lane.isGuessed === true)
+    ? 'lane from files'
+    : here?.guess === 'tied'
+      ? 'lanes tied in files'
+      : here?.guess === 'none'
+        ? 'no lane in files'
+        : ''
+  if (here !== undefined && lanes.length > 0 && !isWide) {
+    const capY = shape.top - 14
+    track +=
+      `<text x="${shape.left}" y="${capY}" ${SANS} font-size="11" fill="${C.muted}">${esc(fit(here.branch, 190))}</text>` +
+      `<text x="${shape.right}" y="${capY}" text-anchor="end" ${SANS} font-size="11" fill="${C.muted}">${marker === '' ? `${lanes.length} tracks` : marker}</text>`
+  } else {
+    const capX = lanes.length > 0 ? shape.right : L.caption.x
+    const capY = lanes.length > 0 ? shape.top - 14 : L.caption.y
+    const capAnchor = lanes.length > 0 ? ' text-anchor="end"' : ''
+    track += `<text x="${capX}" y="${capY}"${capAnchor} ${SANS} font-size="11" fill="${C.muted}">${here === undefined ? (repo === undefined ? 'Reading the repository…' : repo.kind === 'blocked' ? `Git did not run: ${esc(short(repo.why, isWide ? 50 : 36))}` : repo.why === undefined ? 'No git repository in this folder' : `Git said: ${esc(short(repo.why, isWide ? 50 : 34))}`) : lanes.length > 0 ? `${lanes.length} tracks · ${esc(short(here.branch, 30))}${marker === '' ? '' : ` · ${marker}`}` : here.staging === undefined ? 'Release track' : esc(short(here.staging.subject, isWide ? 46 : 34))}</text>`
+  }
 
   const headY = isWide ? 16 : 24
   const head =

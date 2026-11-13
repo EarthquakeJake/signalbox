@@ -67,16 +67,15 @@ export function drawLanes(lanes: readonly Lane[], shape: Shape, now: number, col
     const stageInk = lane.staging === undefined ? C.nodeLine : stale ? C.hl : lane.isPassed === true ? C.accent : C.wire
     const faded = lane.isParked === true ? ' opacity="0.45"' : ''
 
-    // On one line the name sits left of the junction and the wire starts past
-    // the branch count, so no text is crossed by it.
+    // The wire starts past the branch count, so no text is crossed by it.
     const isOne = shape.isOneLine === true
     const nameY = isOne ? padLine + 4 : topLine
     const tagY = isOne ? padLine + 4 : topLine
-    const wireFrom = isOne ? shape.bus + 32 : shape.bus + 7
+    const wireFrom = shape.bus + 32
 
     out += `<g${faded}>`
     out +=
-      `<text x="${shape.left}" y="${nameY}" ${sans} font-size="11" font-weight="600" fill="${isLit ? C.hl : C.text}">${esc(cut(lane.name, shape.nameChars ?? 16))}</text>` +
+      `<text x="${shape.left}" y="${nameY}" ${sans} font-size="11" font-weight="600" fill="${isLit ? C.hl : C.text}" stroke="${C.canvas}" stroke-width="4" stroke-linejoin="round" paint-order="stroke">${esc(cut(lane.name, shape.nameChars ?? 16))}</text>` +
       (lane.live === undefined
         ? ''
         : `<text x="${shape.right}" y="${tagY}" text-anchor="end" ${mono} font-size="11" fill="${C.muted}">${esc(cut(lane.live, shape.liveChars))}</text>`) +

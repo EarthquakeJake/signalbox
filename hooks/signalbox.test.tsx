@@ -1,5 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
+import { fit } from './draw'
 import { covers, matches, pickLane } from './paths'
 
 const settle = (): Promise<void> => new Promise(resolve => setTimeout(resolve, 150))
@@ -109,6 +110,7 @@ test('declared lanes are drawn in place of the single track', async ($, on) => {
   expect(svg).toContain('not yet')
   expect(svg).toContain('parked')
   expect(svg).toContain('3 tracks')
+  expect(svg).toContain('site/landing')
   await ui.unmount()
 })
 
@@ -140,4 +142,9 @@ test('a branch goes to the lane owning most of its files, and a tie names no lan
   expect(pickLane([], lanes)).toBeUndefined()
   // A tie below the top does not spoil a clear winner.
   expect(pickLane(['cloud/a', 'cloud/b', 'app/c', 'site/d'], lanes)).toEqual({ kind: 'lane', index: 3 })
+})
+
+test('a branch name is cut by its width, so wide letters stop short of the wire', () => {
+  expect(fit('claude/awesome-wozniak-mw3m9b7', 190)).toBe('claude/awesome-wozniak-mw3m9b7')
+  expect(fit('claude/MMMMWWWWMMMMWWWWMMMMWWWW', 190).length).toBeLessThan(24)
 })
