@@ -1,6 +1,6 @@
 import type { Board, Lane, OpenBranch, StationId } from '../types'
 import { NAMES } from './draw'
-import { C, FAR_BEHIND, STALE_DAYS, TONE, agoOf, branchIn, esc, fit, fitMono, laneColours, laneTile, line, monoWidth, stagingWords, text, widthOf } from './lanes'
+import { C, FAR_BEHIND, STALE_DAYS, STATION_TONE, TONE, agoOf, branchIn, esc, fit, fitMono, laneColours, laneTile, line, monoWidth, stagingWords, text, widthOf } from './lanes'
 import type { Piece } from './lanes'
 
 // The spine view: the trunk as one line, every open branch joined to it where
@@ -159,7 +159,7 @@ function claudeRing(b: Board, cx: number, cy: number, labelX: number): string {
     const y = cy + 36 * Math.sin(angle)
     const isLive = (b.live[id] ?? 0) > 0
     const isUsed = (b.counts[id] ?? 0) > 0
-    out += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${isLive ? 5 : 4}" fill="${isLive ? C.accent : C.node}" stroke="${isLive ? C.accent : isUsed ? C.muted : C.nodeLine}" stroke-width="1.5"/>`
+    out += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${isLive ? 5 : 4}" fill="${isLive ? C.accent : C.node}" stroke="${isLive ? C.accent : isUsed ? STATION_TONE[id] ?? C.muted : C.nodeLine}" stroke-width="1.5"/>`
   })
   // The stations named beside the ring: those running first, then the busiest.
   const named = STATIONS.filter(id => (b.counts[id] ?? 0) > 0 || (b.live[id] ?? 0) > 0)
@@ -284,7 +284,8 @@ function tallSpine(b: Board, here: Here, now: number): string {
   // Claude, then your branch and staging on the right, placed the same way.
   const rightX = 252
   const rightW = W - 16 - rightX
-  body += claudeRing(b, 288, 84, 336)
+  // The ring sits far enough right that the connectors' lanes (x 236 to 246) pass clear of its stations.
+  body += claudeRing(b, 296, 84, 344)
   type Side = { f: number; h: number; draw: (top: number) => string; ink: string; width: number }
   const sides: Side[] = []
   sides.push({ f: forkY(here.trunk === undefined ? 0 : here.behind), h: 58, ink: C.accent, width: 1.75, draw: t => yourCard(b, here, rightX, t, rightW, lane === undefined ? C.muted : colours.get(lane) ?? C.muted, now, true) })

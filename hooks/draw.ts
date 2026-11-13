@@ -1,5 +1,5 @@
 import type { Board, Lane, StationId } from '../types'
-import { C, agoOf, branchIn, esc, fit, fitMono, laneCard, laneColours, laneLine, stagingWords, text, widthOf } from './lanes'
+import { C, STATION_TONE, agoOf, branchIn, esc, fit, fitMono, laneCard, laneColours, laneLine, stagingWords, text, widthOf } from './lanes'
 
 export { fit }
 
@@ -231,15 +231,15 @@ function tallRelease(b: Board, names: TrackNames, now: number, flow: Wear): { sv
   const colours = laneColours(lanes)
   let y = 424
   for (const lane of rest) {
-    const card = laneCard(lane, y + 8, now, colours.get(lane) ?? C.muted, names.staging)
+    const card = laneCard(lane, y + 6, now, colours.get(lane) ?? C.muted, names.staging)
     out += card.svg
-    y += 8 + card.h
+    y += 6 + card.h
   }
-  if (merged === undefined) return { svg: out, h: y + 16 }
-  out += `<g transform="translate(16 ${y + 14}) scale(0.6667)" fill="none" stroke="${C.muted}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/></g>`
-  out += text(36, y + 26, merged === 0 ? 'No merged branches' : `${merged} merged ${merged === 1 ? 'branch' : 'branches'}`)
+  if (merged === undefined) return { svg: out, h: y + 10 }
+  out += `<g transform="translate(18 ${y + 13}) scale(0.5833)" fill="none" stroke="${C.muted}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/></g>`
+  out += text(38, y + 24, merged === 0 ? 'No merged branches' : `${merged} merged ${merged === 1 ? 'branch' : 'branches'}`)
 
-  return { svg: out, h: y + 40 }
+  return { svg: out, h: y + 38 }
 }
 
 /**
@@ -396,7 +396,8 @@ export function drawBoard(b: Board, isWide: boolean, names: TrackNames, now: num
     wires += wire(s.wire, wear)
     chips +=
       `<rect x="${s.x + 0.5}" y="${s.y + 0.5}" width="${s.w - 1}" height="27" rx="7.5" fill="${C.node}" stroke="${isLive ? C.accent : C.nodeLine}"/>` +
-      `<g transform="translate(${s.x + 8} ${s.y + 7}) scale(0.5833)" fill="none" stroke="${ink}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${ICONS[id]}</g>` +
+      // Each station's icon in its own colour; a running one turns silk.
+      `<g transform="translate(${s.x + 7} ${s.y + 7}) scale(0.5833)" fill="none" stroke="${isLive ? C.accent : STATION_TONE[id] ?? C.muted}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${ICONS[id]}</g>` +
       text(s.x + 28, s.y + 18, NAMES[id], { fill: isLive ? C.accent : id === 'you' ? C.text : C.muted }) +
       // On the narrow chips a three-figure count takes smaller type, so it stays clear of the name.
       (count > 0
