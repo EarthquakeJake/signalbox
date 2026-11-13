@@ -1,6 +1,6 @@
 import type { EngineInterface } from 'claude-code'
 
-import type { Lane, Repo, Stage } from '../types'
+import type { Lane, OpenBranch, Repo, Stage } from '../types'
 import { readLanes, readSpecs, refOf } from './tracks'
 
 const NONE: Repo = { kind: 'none' }
@@ -140,6 +140,7 @@ export async function readRepo($: EngineInterface, cwd: string, asked: string, s
   let lanes: Lane[] | undefined
   let guess: 'none' | 'tied' | undefined
   let merged: number | undefined
+  let loose: OpenBranch[] | undefined
   if (trunkRef !== undefined) {
     const now = await $.clock.now()
     const specs = await readSpecs($, cwd)
@@ -148,6 +149,7 @@ export async function readRepo($: EngineInterface, cwd: string, asked: string, s
       lanes = placed.lanes
       guess = placed.guess
       merged = placed.merged
+      loose = placed.loose
     } else if (stagingRef !== '') {
       const found = await refOf($, cwd, stagingRef)
       if (found !== undefined) staging = await stageOf($, cwd, trunkRef, found, now, true)
@@ -171,5 +173,6 @@ export async function readRepo($: EngineInterface, cwd: string, asked: string, s
     ...(lanes === undefined || lanes.length === 0 ? {} : { lanes }),
     ...(guess === undefined || lanes === undefined || lanes.length === 0 ? {} : { guess }),
     ...(merged === undefined ? {} : { merged }),
+    ...(loose === undefined || loose.length === 0 ? {} : { loose }),
   }
 }
