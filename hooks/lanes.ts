@@ -88,7 +88,7 @@ export function stagingWords(lane: Lane, now: number): { when: string; news: str
 // Each lane's own colour, from the Silkscreen category set. Red and amber are
 // left out, being the danger and warning tones of the pills, and slate, which reads as no colour.
 const CATS = ['#A5B4FC', '#F0ABFC', '#7DD3FC', '#86EFAC', '#5EEAD4']
-const TONE = {
+export const TONE = {
   warn: { ink: '#E9B44C', soft: 'rgba(233,180,76,0.12)' },
   danger: { ink: '#F87171', soft: 'rgba(248,113,113,0.12)' },
   plain: { ink: C.muted, soft: '#111C20' },
@@ -172,10 +172,10 @@ const flagsOf = (b: OpenBranch, now: number): Array<{ words: string; tone: 'warn
   ...(now - b.updatedAt > STALE_DAYS * 86400000 ? [{ words: 'Stale', tone: 'warn' as const }] : []),
 ]
 
-type Piece = { words: string; fill: string }
+export type Piece = { words: string; fill: string }
 
 /** A line of pieces, each with its colour: whole pieces while they fit, the first one cut if it must be. */
-function line(x: number, y: number, pieces: Piece[], most: number): string {
+export function line(x: number, y: number, pieces: Piece[], most: number): string {
   let used = 0
   let out = ''
   for (const [at, p] of pieces.entries()) {
