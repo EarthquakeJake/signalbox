@@ -49,8 +49,26 @@ export type OpenBranch = {
   updatedAt: number
   /** True where it was placed in this lane by its files rather than its name. */
   isByFiles?: boolean
+  /** The worst clash this branch is part of, for marking it where it is drawn. */
+  clash?: 'conflict' | 'overlap'
   /** Its newest commit's subject, which says what the branch is for when its name does not. */
   subject?: string
+}
+
+/**
+ * Two pieces of open work that would collide, the signal Signalbox exists to give
+ * teams and parallel agents early.
+ */
+export type Clash = {
+  /** The two branches. Uncommitted work counts as part of the branch its worktree has checked out. */
+  a: string
+  b: string
+  /** `conflict`: git finds merge conflicts between them. `overlap`: they change the same files, but git merges them cleanly. */
+  level: 'conflict' | 'overlap'
+  /** Up to three of the files involved, conflicting ones first. */
+  files: string[]
+  /** True where uncommitted work in a worktree, not only commits, is part of the clash. */
+  isUncommitted?: boolean
 }
 
 /** One lane as it stands now. */
@@ -117,6 +135,10 @@ export type Repo =
       merged?: number
       /** Open branches that belong to no lane, newest first, at most four, for the spine view. */
       loose?: OpenBranch[]
+      /** Clashes among open branches and their worktrees' uncommitted work, worst first, at most eight. */
+      clashes?: Clash[]
+      /** The worst clash the branch you are on, with its uncommitted work, is part of. */
+      clash?: 'conflict' | 'overlap'
     }
 
 export type Board = {

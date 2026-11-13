@@ -6,6 +6,8 @@ The design reference is the **Refined board** page of the Release map canvas: ht
 
 | Track | Work | Branch |
 | --- | --- | --- |
+| Data | **Conflict signals, the data:** each open branch's changed files plus its worktree's uncommitted files; pairs that share files are tested with `git merge-tree` (no checkout). `Repo.clashes`, `Repo.clash`, `OpenBranch.clash`. | `data/clashes` |
+| Board | **Conflict signals, drawn:** red for a real conflict, amber for the same files, on branch rows, the lit lane and the spine, plus a one-line summary. | `board/clashes` |
 
 ## Next
 
@@ -14,7 +16,6 @@ The design reference is the **Refined board** page of the Release map canvas: ht
 
 ## Later
 
-- **Conflict signals** (next after this round; Jake calls it the core of Signalbox): red when two branches or chats would change the same files and collide (`git merge-tree`, no checkout), amber when they share a lane but not files.
 - **Lane check per turn:** the edit tag names its lane, and warns when one turn touches two lanes or a branch's prefix doesn't match its files.
 - **Release train:** a train from trunk to live while a deploy runs, with an estimate from recent runs, and a "needs you" stop when UAT holds unreleased work. Needs `gh`, so opt-in.
 - **Ready to merge** per branch: a project names a per-branch tag in its track file (Silkscreen's is `dry-run-passed/<branch>`, force-moved to the commit its checks passed on), and a branch whose tip carries it gets a "ready" mark. Reading it locally needs fetching with `--force`, so it pairs with the fetch timer. Data and Board.
