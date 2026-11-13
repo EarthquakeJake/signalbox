@@ -159,6 +159,37 @@ export function isWidePane(columns: number, rows: number): boolean {
   return columns >= 90 && columns > rows * 2 * 1.6
 }
 
+/**
+ * A pane cell in CSS pixels. A desktop surface counts the pane in cells of its
+ * code font (its advance and line height), and says nothing of the font's size,
+ * so these are a low guess: around a 12–13 px monospace. Guessing low makes the
+ * drawing a little smaller than the room; guessing high would cut it off.
+ */
+export const CELL = { w: 7, h: 17 }
+/** The drawing is never shrunk below this, so its 11 px text stays readable; a smaller pane scrolls. */
+export const LEAST = 0.6
+/** Nor grown past this, so a broad pane does not blow it up. */
+export const MOST = 1.5
+
+/**
+ * The CSS size to draw an SVG at in a pane `columns` by `rows` cells, `rows`
+ * being what is left after anything stacked under it: as large as fits both
+ * ways with its shape kept, between LEAST and MOST of its own size.
+ */
+export function fitPicture(svg: string, columns: number, rows: number): { width: number; height: number } {
+  const box = /viewBox="0 0 ([\d.]+) ([\d.]+)"/.exec(svg)
+  const w = box === null ? 440 : Number(box[1])
+  const h = box === null ? 440 : Number(box[2])
+  const room = Math.min((Math.max(columns, 1) * CELL.w) / w, (Math.max(rows, 1) * CELL.h) / h)
+  const scale = Math.min(MOST, Math.max(LEAST, room))
+
+  return { width: Math.floor(w * scale), height: Math.floor(h * scale) }
+}
+
+/** When a desktop pane was last drawn; the redraw tick stops once it has not been for a while. */
+let paneDrawnAt = 0
+const NUDGE = 2000
+
 export const register: Register = (on, options) => {
   asked = typeof options?.trunkBranch === 'string' ? options.trunkBranch.trim() : ''
   stagingPath = typeof options?.stagingPath === 'string' ? options.stagingPath.trim() : ''
@@ -176,6 +207,16 @@ export const register: Register = (on, options) => {
       isTicking = true
       // A quiet heartbeat, so a commit or a checkout made outside this session still shows.
       void quietly(async () => $.clock.every(20000, () => void refresh($, false)))
+      // The host does not redraw a pane whose height alone changed, so while a
+      // desktop pane is showing it is asked to draw again every two seconds and
+      // so read its size afresh. Each redraw marks the pane drawn, which keeps
+      // the tick going; once the pane is closed nothing is drawn and it stops.
+      void quietly(async () =>
+        $.clock.every(NUDGE, async () => {
+          const now = await quietly(() => $.clock.now())
+          if (now !== undefined && now - paneDrawnAt <= NUDGE * 3) $.ui.invalidate('ui.render')
+        }),
+      )
     }
 
     return next(e)
@@ -283,21 +324,25 @@ export const register: Register = (on, options) => {
     const alt = `${TITLE}. ${running !== undefined ? `${NAMES[running.station]}: ${running.label}` : state.isWorking ? 'Thinking' : 'Waiting for you'}`
 
     const picture = state.view === 'spine' ? drawSpine(state, isWide, now) : drawBoard(state, isWide, names, now)
+    paneDrawnAt = now
 
-    // Centred rather than stretched, so a broad pane leaves the drawing at its own size instead of blowing it up.
+    // Sized to the pane both ways, its shape kept, and centred.
     // The wide board draws the feed itself, under the tag, where a short pane cannot cut it off.
     if (isWide) {
+      const size = fitPicture(picture, e.props.bodyColumns, e.props.scroll.bodyRows)
       return (
         <Box flexDirection="column" alignItems="center">
-          <Svg source={picture} alt={alt} />
+          <Svg source={picture} alt={alt} width={size.width} height={size.height} />
         </Box>
       )
     }
 
+    // The feed's lines and the gap above them come out of the drawing's room.
+    const size = fitPicture(picture, e.props.bodyColumns, e.props.scroll.bodyRows - feed.length - 1)
     return (
       <Box flexDirection="column" gap={1}>
         <Box flexDirection="column" alignItems="center">
-          <Svg source={picture} alt={alt} />
+          <Svg source={picture} alt={alt} width={size.width} height={size.height} />
         </Box>
         <Box flexDirection="column">{feed}</Box>
       </Box>
