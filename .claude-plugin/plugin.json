@@ -1,0 +1,28 @@
+{
+  "name": "signalbox",
+  "version": "0.1.0",
+  "description": "A live circuit board beside the chat: Claude sits in the middle, its tools are pins that light up as they are used, and file and shell work is wired into your release track. Switches between a tall and a wide layout by itself.",
+  "author": {
+    "name": "EarthquakeJake",
+    "url": "https://github.com/EarthquakeJake"
+  },
+  "homepage": "https://github.com/EarthquakeJake/signalbox",
+  "repository": "https://github.com/EarthquakeJake/signalbox",
+  "keywords": ["mod", "pane", "map", "visualization", "activity", "tool calls", "branches", "release"],
+  "license": "MIT",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "stagingName": {
+      "type": "string",
+      "title": "Name of the middle stage",
+      "default": "Staging",
+      "description": "What the middle stop of the release track is called in your project, such as Staging, UAT or Preview."
+    },
+    "liveName": {
+      "type": "string",
+      "title": "Name of the last stage",
+      "default": "Live",
+      "description": "What the last stop of the release track is called in your project, such as Live or Production."
+    }
+  }
+}
