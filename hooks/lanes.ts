@@ -210,50 +210,57 @@ function stagingPieces(lane: Lane, now: number, stagingName: string): Piece[] {
  * behind or stale. Returns the drawing and its height.
  */
 export function laneCard(lane: Lane, top: number, now: number, colour: string, stagingName: string): { svg: string; h: number } {
-  const left = 16
-  const right = 424
-  const inner = right - 12
+  // Option A, "Board, slimmer": a 46 px head (tile, name, live pill; staging under it), then the branches at 18 px.
+  const inner = 412
   const open = lane.open ?? []
   const more = Math.max(0, lane.branches - open.length)
   const rows = open.length + (more > 0 && open.length > 0 ? 1 : 0)
-  const h = 58 + (rows > 0 ? 8 + rows * 20 + 4 : 0)
+  const h = 46 + (rows > 0 ? rows * 18 + 6 : 0)
 
   let out = `<g${lane.isParked === true ? ' opacity="0.45"' : ''}>`
-  out += `<rect x="${left + 0.5}" y="${top + 0.5}" width="${right - left - 1}" height="${h - 1}" rx="10" fill="${C.node}" stroke="${C.nodeLine}"/>`
-  out += laneTile(lane, 28, top + 12, 22, colour)
+  out += `<rect x="16.5" y="${top + 0.5}" width="407" height="${h - 1}" rx="8" fill="${C.node}" stroke="${C.nodeLine}"/>`
+  out += `<rect x="26.5" y="${top + 10.5}" width="17" height="17" rx="4.5" fill="${colour}" fill-opacity="0.18" stroke="${colour}" stroke-opacity="0.5"/>`
+  out += laneIcon(lane, 28, top + 12, 14, colour)
 
   // The live tag on the right, then the name and what is in flight in the room it leaves.
-  const live = lane.live === undefined ? undefined : pill(inner, top + 23, fitMono(liveWords(lane.live), 120), 'plain', true)
+  const live = lane.live === undefined ? undefined : pill(inner, top + 17, fitMono(liveWords(lane.live), 120), 'plain', true, 18)
   if (live !== undefined) out += live.svg
-  const room = (live === undefined ? inner : live.left - 10) - 58
+  const room = (live === undefined ? inner : live.left - 10) - 54
   const name = fit(lane.name, Math.min(150, room - 40), 13, 600)
   const nameW = widthOf(name, 13, 600)
-  out += text(58, top + 28, esc(name), { size: 13, weight: 600, fill: C.text })
+  out += text(54, top + 22, esc(name), { size: 13, weight: 600, fill: C.text })
   const flight = fit(lane.isParked === true ? `Parked · ${inFlight(lane).toLowerCase()}` : inFlight(lane), room - nameW - 8)
-  if (flight !== '…') out += text(58 + nameW + 8, top + 28, esc(flight))
-  out += line(58, top + 46, stagingPieces(lane, now, stagingName), inner - 58)
+  if (flight !== '…') out += text(54 + nameW + 8, top + 22, esc(flight))
+  out += line(54, top + 38, stagingPieces(lane, now, stagingName), inner - 54)
 
-  if (rows > 0) {
-    out += `<path d="M28 ${top + 58.5}H${inner}" fill="none" stroke="${C.line}" stroke-width="1"/>`
-    open.forEach((b, at) => {
-      const mid = top + 76 + at * 20
-      // Pills from the right edge inward, then the ahead count after the name, which takes what is left.
-      let edge = inner
-      for (const flag of flagsOf(b, now)) {
-        const p = pill(edge, mid, flag.words, flag.tone, false, 18)
-        out += p.svg
-        edge = p.left - 6
-      }
-      const ahead = `+${b.ahead}`
-      const shown = branchIn(b.name, edge - 4 - 44 - monoWidth(ahead) - 8)
-      out += `<circle cx="34" cy="${mid}" r="2.5" fill="${colour}"/>`
-      out += text(44, mid + 4, esc(shown), { font: 'mono', fill: C.text })
-      out += text(44 + monoWidth(shown) + 8, mid + 4, ahead, { font: 'mono' })
-    })
-    if (more > 0) out += text(44, top + 80 + open.length * 20, `+${more} more`)
-  }
+  // Every open branch the data holds, at 18 px: pills from the right edge inward, the name taking what is left.
+  open.forEach((b, at) => {
+    const mid = top + 56 + at * 18
+    let edge = inner
+    for (const flag of flagsOf(b, now)) {
+      const p = pill(edge, mid, flag.words, flag.tone, false, 16)
+      out += p.svg
+      edge = p.left - 6
+    }
+    const ahead = `+${b.ahead}`
+    const shown = branchIn(b.name, edge - 4 - 64 - monoWidth(ahead) - 8)
+    out += `<circle cx="56" cy="${mid}" r="2.5" fill="${colour}"/>`
+    out += text(64, mid + 4, esc(shown), { font: 'mono', fill: C.text })
+    out += text(64 + monoWidth(shown) + 8, mid + 4, ahead, { font: 'mono' })
+  })
+  if (more > 0 && open.length > 0) out += text(64, top + 60 + open.length * 18, `+${more} more`)
 
   return { svg: `${out}</g>`, h }
+}
+
+/** A lane's icon alone, in its colour, `size` px square. */
+const laneIcon = (lane: Lane, x: number, y: number, size: number, colour: string): string =>
+  `<g transform="translate(${x} ${y}) scale(${(size / 24).toFixed(4)})" fill="none" stroke="${colour}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${iconOf(lane)}</g>`
+
+// Each station's own colour, from the Silkscreen category set. Files and Shell take copper: they feed your branch.
+export const STATION_TONE: Record<string, string> = {
+  you: '#CBD5E1', skills: '#FCD34D', hooks: '#FCA5A5', memory: '#A5B4FC', model: '#F0ABFC',
+  agents: '#5EEAD4', browser: '#7DD3FC', network: '#86EFAC', files: '#D4976A', shell: '#D4976A',
 }
 
 /**
