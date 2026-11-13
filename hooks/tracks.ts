@@ -410,6 +410,13 @@ export async function readLanes($: EngineInterface, cwd: string, trunkRef: strin
 
   // Clashes among open work: the trunk and staging branches are never work in flight.
   const stages = new Set(specs.flatMap(spec => (spec.stagingBranch === undefined ? [] : [spec.stagingBranch])))
+  // Every branch's lane, not only the few listed under it, so a clash can say when both sides share one.
+  const laneOf = new Map<string, string>()
+  specs.forEach((spec, index) => {
+    for (const name of [...(named[index] ?? []), ...(placedIn[index] ?? [])]) {
+      if (!laneOf.has(name)) laneOf.set(name, spec.id ?? spec.name)
+    }
+  })
   const working = rows.filter(row => row.name !== trunkName && !stages.has(row.name))
   const clashing = await readClashes(
     $,
@@ -420,6 +427,7 @@ export async function readLanes($: EngineInterface, cwd: string, trunkRef: strin
     working.filter(row => !isOpen(row.name)),
     branch,
     hereDirty,
+    laneOf,
     keptFiles,
     now,
   )
