@@ -57,6 +57,8 @@ export type Lane = {
   id?: string
   /** Its open branches, newest first, at most four. `branches` remains the full count. */
   open?: OpenBranch[]
+  /** Its newest release tags with when each was made, newest first, at most four, for the spine view. */
+  releases?: { name: string; at: number }[]
   name: string
   /** Open branches that belong to this lane: those not yet merged into the trunk. */
   branches: number
@@ -109,6 +111,8 @@ export type Repo =
       guess?: 'none' | 'tied'
       /** Local branches already merged into the trunk, which could be cleaned up. */
       merged?: number
+      /** Open branches that belong to no lane, newest first, at most four, for the spine view. */
+      loose?: OpenBranch[]
     }
 
 export type Board = {

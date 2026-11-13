@@ -4,7 +4,13 @@ The design reference is the **Refined board** page of the Release map canvas: ht
 
 ## Now
 
-Nothing in progress. Releases 1 to 3 of the refined design and option 2's lane cards are done (0.7.0 to 0.10.0).
+| Track | Work | Branch |
+| --- | --- | --- |
+| Data | Spine data: `Lane.releases` (each lane's newest tags with dates) and `Repo.loose` (open branches in no lane). | `data/spine` |
+| Board | **Option 3, the spine** (canvas page "Fused with work map", `FusedSpine`): the trunk drawn as a spine, open branches hanging off it where they forked, older releases down it. A second view in `hooks/spine.ts`, beside the board. | `board/spine` |
+| Release | Switching views: `/signalbox spine` and `/signalbox board`. | chief |
+| Quality | Why the switch to the wide layout sometimes sticks when the pane is reshaped, and a fix proposal. | `quality/layout-switch` |
+| Design | A revised mock-up on the canvas: the board slimmer and closer to option 2's refinement, with more colour in the icons, as options for Jake to choose from. | canvas |
 
 ## Next
 
@@ -14,7 +20,6 @@ Nothing in progress. Releases 1 to 3 of the refined design and option 2's lane c
 ## Later
 
 - **Real deploy status.** What a stage is actually serving, where a project has a source for that, rather than inferring it from commits. Data.
-- **Option 3, the spine view.** All open branches along the trunk, as on the canvas's FusedSpine. A second view beside the board, switchable under it. Option 1 (the stack) is dropped. Board and Data.
 - **Counting every branch.** Today at most twelve unnamed branches are placed by their files. Data.
 
 ## Done
