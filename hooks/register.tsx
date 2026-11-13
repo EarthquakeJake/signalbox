@@ -347,11 +347,16 @@ export const register: Register = (on, options) => {
       )
     }
 
-    // The feed's rows and the gap above them come out of the drawing's room.
+    // The tall spine is a list that grows with the branches: squeezed to the
+    // pane's height it would turn into a narrow strip, so it takes the pane's
+    // whole width instead and the pane scrolls. The board keeps to the height.
+    // The feed's rows and the gap above them come out of the board's room.
+    const tallRows = state.view === 'spine' ? Number.MAX_SAFE_INTEGER : e.props.scroll.bodyRows - FEED_ROWS
+
     return (
       <Box flexDirection="column" gap={1}>
         <Box flexDirection="column" alignItems="center">
-          <Svg source={sizedPicture(picture, e.props.scroll.bodyRows - FEED_ROWS)} alt={alt} />
+          <Svg source={sizedPicture(picture, tallRows)} alt={alt} />
         </Box>
         <Box flexDirection="column">{feed}</Box>
       </Box>

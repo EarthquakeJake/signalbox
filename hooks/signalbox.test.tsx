@@ -168,3 +168,17 @@ test('/signalbox spine switches the pane to the spine, and /signalbox board back
   expect(JSON.stringify(await back.find({ type: 'Svg' }))).toContain('>NOW<')
   await back.unmount()
 })
+
+test('the tall spine fills the width rather than shrinking to the pane height', async ($, on) => {
+  on('command.register', () => ({ value: { command: 'signalbox' } }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('clock.now', () => ({ value: 1000 }))
+  on('session.cwd', () => ({ value: '/repo' }))
+
+  await $.command.run({ command: 'signalbox', args: 'spine' })
+  const short = await $.ui.mount(pane(60, 12))
+  const source = JSON.stringify(await short.find({ type: 'Svg' }))
+  const width = Number(/width=\\"(\d+)\\"/.exec(source)?.[1] ?? 0)
+  expect(width).toBeGreaterThan(600)
+  await short.unmount()
+})

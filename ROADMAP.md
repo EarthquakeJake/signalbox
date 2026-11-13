@@ -26,6 +26,7 @@ The design reference is the **Refined board** page of the Release map canvas: ht
 
 ## Done
 
+- 0.16.2: the tall spine fills the pane's width and scrolls, instead of shrinking to the pane's height into a narrow strip.
 - 0.16.1: fixes from the first live check on Silkscreen. Routine overlaps judged by every branch's lane, not the listed four; likely conflicts tested first, so they show on the first refresh; "You are on main" on the trunk; one staging wording in both views; whole names in the spine's clash list; "+N more" on the spine; no counts touching chip names.
 - 0.16.0: conflict signals. Red for branches git would not merge cleanly, amber for shared files across lanes or with uncommitted work, routine same-file overlaps within a lane folded into one quiet line; on branches, your branch, a summary and the tall spine's foot.
 - 0.15.0: the spine redesigned as Jake picked from "Spine, round 2": a lane tree ordered closest to main first when tall, a tree when wide, Claude given room, no legend; your own branch described rather than named.
