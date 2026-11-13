@@ -130,6 +130,10 @@ const LANE_ICONS: Array<[RegExp, string]> = [
   [/cloud|hosting|deploy/, '<path d="M7 18h10a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.2 9.4 4.3 4.3 0 0 0 7 18z"/>'],
   [/platform|infra|api|server|backend|core|service/, '<path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/>'],
   [/doc|guide|blog|content/, '<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/>'],
+  [/release|ship|version|\btags?\b/, '<path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1.5"/>'],
+  [/data|db|store|model/, '<ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"/>'],
+  [/quality|test|qa|check/, '<circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/>'],
+  [/board|\bui\b|front|design|view/, '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M9 11h12"/>'],
 ]
 const LANE_ICON = '<circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/>'
 const iconOf = (lane: Lane): string => {
