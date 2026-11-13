@@ -18,7 +18,7 @@ type Shape = {
   stageChars: number
 }
 
-export const TALL_LANES: Shape = { left: 16, right: 424, bus: 96, stage: 208, row: 40, top: 334, liveChars: 20, stageChars: 28 }
+export const TALL_LANES: Shape = { left: 16, right: 424, bus: 96, stage: 208, row: 40, top: 340, liveChars: 20, stageChars: 28 }
 export const WIDE_LANES: Shape = { left: 656, right: 884, bus: 672, stage: 764, row: 44, top: 48, liveChars: 14, stageChars: 17 }
 
 /** How long ago, in the fewest characters that still say it. */
