@@ -29,7 +29,7 @@ The pane reads its own width and height and picks a layout:
 - **Tall**, for a narrow or full-height pane: the flow runs top to bottom.
 - **Wide**, for a short and broad pane, such as one stacked above a browser preview: the flow runs left to right.
 
-It switches as you drag the pane's edges. The board has a fixed maximum size, so it does not balloon in a large pane. The parts that matter most are at the top, so a pane that is cut short loses the feed first.
+It switches as you drag the pane's edges. The drawing is sized to fit the pane both ways, between 0.6 and 1.5 times its own size, so it neither balloons in a large pane nor runs off the bottom of a short one. The parts that matter most are at the top, so a pane that is cut short loses the feed first.
 
 In a terminal there is no drawing surface for the board; the pane shows the feed alone.
 
@@ -130,7 +130,7 @@ It makes no network requests of its own, and calls no model. It never changes or
 
 ## Status
 
-Version 0.13.0, an early release. Both layouts have been rendered and looked at, with lanes and without. Built and tried on Claude Code 2.1.321 in the desktop app on Windows. Other surfaces are covered by the mod's tests but have not been tried by hand. The test engine serves no processes, so the git reading is covered by its failing case alone and was checked by hand in a real repository.
+Version 0.14.0, an early release. Both layouts have been rendered and looked at, with lanes and without. Built and tried on Claude Code 2.1.321 in the desktop app on Windows. Other surfaces are covered by the mod's tests but have not been tried by hand. The test engine serves no processes, so the git reading is covered by its failing case alone and was checked by hand in a real repository.
 
 ## Development
 
