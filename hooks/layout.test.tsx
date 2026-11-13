@@ -1,0 +1,45 @@
+import { expect, test } from 'claude-code/testing'
+
+import { FIXTURES } from '../tools/fixtures'
+import { layoutProblems } from '../tools/layout'
+import { drawBoard } from './draw'
+
+// Faults the drawing already had when this check was written, seen in the
+// render harness's pictures and left to the Board track. They do not fail the
+// tests; anything new does. Remove a line once the drawing no longer has it.
+const KNOWN: Record<string, string[]> = {
+  'parked-lane_tall': ['"Wwwwwwwwww…" overlaps "12"', '"Wwwwwwwwww…" straddles the circle at 96,429'],
+  'no-lanes-staging_wide': ['"site-2026-11-13" runs off the board', '"UAT: the new landing page and the pricing tab…" runs off the board'],
+  'no-repo-why_wide': ['"Git said: fatal: detected dubious ownership in repository a…" runs off the board'],
+  'git-blocked_wide': ['"Git did not run: spawn git ENOENT: the command could not be found …" runs off the board'],
+  'files-running_tall': ['"Files" overlaps "99+"'],
+}
+
+for (const f of FIXTURES) {
+  for (const isWide of [false, true]) {
+    const name = `${f.id}_${isWide ? 'wide' : 'tall'}`
+    test(`layout: ${f.title}, ${isWide ? 'wide' : 'tall'}: no text overlaps, crosses a wire or leaves the board`, () => {
+      const found = layoutProblems(drawBoard(f.board, isWide, f.names, f.now))
+      const known = KNOWN[name] ?? []
+      expect(found.filter(p => !known.includes(p))).toEqual([])
+    })
+  }
+}
+
+test('the layout check sees the faults it is for', () => {
+  const svg = (body: string): string => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100" width="200" height="100">${body}</svg>`
+  const t = (x: number, y: number, text: string, extra = ''): string => `<text x="${x}" y="${y}" font-size="11"${extra}>${text}</text>`
+  // Clear.
+  expect(layoutProblems(svg(t(10, 20, 'Website') + t(10, 40, 'App') + '<path d="M100 0V100" fill="none" stroke="#fff"/>'))).toEqual([])
+  // Two texts on one line.
+  expect(layoutProblems(svg(t(10, 20, 'Website') + t(40, 20, 'App')))).toHaveLength(1)
+  // A wire through a word, and the same word with a halo breaking the wire.
+  expect(layoutProblems(svg(t(90, 50, 'Website') + '<path d="M100 0V100" fill="none" stroke="#fff"/>'))).toHaveLength(1)
+  expect(layoutProblems(svg(t(90, 50, 'Website', ' fill="none" stroke="#000"') + t(90, 50, 'Website') + '<path d="M100 0V100" fill="none" stroke="#fff"/>'))).toEqual([])
+  // Off the right edge, measured from where an end-anchored text starts.
+  expect(layoutProblems(svg(t(170, 50, 'Website')))).toHaveLength(1)
+  expect(layoutProblems(svg(t(190, 50, 'Website', ' text-anchor="end"')))).toEqual([])
+  // Out through the side of a box.
+  expect(layoutProblems(svg('<rect x="10" y="30" width="40" height="28"/>' + t(18, 48, 'Website and more')))).toHaveLength(1)
+  expect(layoutProblems(svg('<rect x="10" y="30" width="80" height="28"/>' + t(18, 48, 'Website')))).toEqual([])
+})
