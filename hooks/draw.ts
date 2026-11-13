@@ -157,8 +157,16 @@ function tallRelease(b: Board, names: TrackNames, now: number, flow: Wear): { sv
       const tail = ` · you are here · ${plural(lit.branches, 'branch', 'branches')}`
       caption = `<tspan font-size="13" font-weight="600" fill="${C.hl}">${esc(name)}</tspan>${esc(fit(tail, room - widthOf(name, 13, 600)))}`
       const words = stagingWords(lit, now)
+      // Staging the same as live says so rather than its age, so a count behind the trunk is not read as live being stale.
+      const isSameAsLive = lit.isStagingLive === true && lit.hasYours !== true
       stageLabel =
-        lit.isParked === true ? 'parked' : lit.staging === undefined ? 'no staging' : words.news === '' ? `${names.staging} · ${words.when}` : `${words.when} · ${words.news}`
+        lit.isParked === true
+          ? 'parked'
+          : lit.staging === undefined
+            ? 'no staging'
+            : isSameAsLive
+              ? `${names.staging} · same as live`
+              : words.news === '' ? `${names.staging} · ${words.when}` : `${words.when} · ${words.news}`
       stageState =
         lit.staging === undefined || lit.isParked === true
           ? 'none'
