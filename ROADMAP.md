@@ -7,7 +7,6 @@ The design reference is the **Refined board** page of the Release map canvas: ht
 | Track | Work | Branch |
 | --- | --- | --- |
 | Quality | The wide layout sticks on height-only resizes: the host does not redraw then. A timed redraw may fix it; waiting on Jake's drag check. | — |
-| Board | Option A from the canvas page "Board, slimmer": tighter cards and a colour per station icon. Prototype patches in `board-slimmer/`. | `board/slim-a` |
 
 ## Next
 
@@ -21,6 +20,7 @@ The design reference is the **Refined board** page of the Release map canvas: ht
 
 ## Done
 
+- 0.12.0: option A from "Board, slimmer": tighter lane cards (726 to 666 px on Silkscreen) and each tool station's icon in its own colour, on the board and the spine.
 - 0.11.1: release pills on the spine are never cut, branches in no lane show on it, and tracks named board, data, quality or release get their own icons.
 - 0.11.0: option 3, the spine, switched with `/signalbox spine` and `/signalbox board`; the drawing is centred rather than stretched in a broad pane.
 - 0.10.0: option 2's lane cards. A colour and icon per lane, its status, live tag as a pill, staging, and its open branches listed with behind and stale pills; the merged count at the foot. Wide lanes carry the same, on one line each. All known drawing faults fixed.
