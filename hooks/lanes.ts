@@ -116,65 +116,13 @@ export function laneRow(lane: Lane, cy: number, now: number, shape: 'tall' | 'wi
   if (isLit) out += `<circle cx="${padX}" cy="${cy}" r="11" fill="none" stroke="${C.ring}" stroke-width="4"/>`
   out +=
     `<circle cx="${padX}" cy="${cy}" r="9" fill="${C.canvas}" stroke="${isLit ? C.accent : C.wire}" stroke-width="${isLit ? 2 : 1.5}"/>` +
-    // Three figures would overrun the pad, so a hundred or more reads as `99+` in smaller type.
-    (lane.branches > 99
-      ? text(padX, cy + 3, '99+', { font: 'mono', size: 8, anchor: 'middle', fill: isLit ? C.text : C.muted })
+    // Two figures take smaller type to sit inside the pad, and a hundred or more reads as `99+`.
+    (lane.branches > 9
+      ? text(padX, cy + 3, lane.branches > 99 ? '99+' : String(lane.branches), { font: 'mono', size: lane.branches > 99 ? 8 : 9, anchor: 'middle', fill: isLit ? C.text : C.muted })
       : text(padX, cy + 4, String(lane.branches), { font: 'mono', anchor: 'middle', fill: isLit ? C.text : lane.branches === 0 ? C.faint : C.muted })) +
     text(nameX, cy + 4.5, esc(name), { size: 13, weight: 600, fill: isLit ? C.hl : C.text }) +
     (live === '' ? '' : text(right, cy + 4, esc(live), { font: 'mono', anchor: 'end' })) +
     text(stageX, stageY, stage)
 
   return `${out}</g>`
-}
-
-/** Where the old wide lanes sit: a bus down the right column, one pad per lane. */
-type Shape = { left: number; right: number; bus: number; stage: number; row: number; top: number; liveChars: number; stageChars: number }
-
-export const WIDE_LANES: Shape = { left: 656, right: 884, bus: 672, stage: 746, row: 44, top: 48, liveChars: 15, stageChars: 20 }
-
-const cut = (words: string, most: number): string => (words.length <= most ? words : `${words.slice(0, most - 1)}…`)
-
-/**
- * The wide board's lanes, each a row: its name and what is live on it above, its
- * branches and its staging below, hung off one bus. The lane you are working in is the lit one.
- */
-export function drawLanes(lanes: readonly Lane[], shape: Shape, now: number): string {
-  if (lanes.length === 0) return ''
-  const middleOf = (at: number): number => shape.top + shape.row / 2 + at * shape.row
-  const lastY = middleOf(lanes.length - 1) + 9
-
-  let out = `<path d="M${shape.bus} ${shape.top}V${lastY}" fill="none" stroke="${C.wire}" stroke-width="1.5"/>`
-
-  for (let at = 0; at < lanes.length; at += 1) {
-    const lane = lanes[at]
-    if (lane === undefined) continue
-    const mid = middleOf(at)
-    const topLine = mid - 6
-    const padLine = mid + 9
-    const isLit = lane.isHere && lane.isParked !== true
-    const stale = lane.staging !== undefined && lane.staging.behind > 0
-    const stageInk = lane.staging === undefined ? C.nodeLine : stale ? C.hl : lane.isPassed === true ? C.accent : C.wire
-    const faded = lane.isParked === true ? ' opacity="0.45"' : ''
-    const name = esc(cut(lane.name, 16))
-    const words = stagingWords(lane, now)
-
-    // The halo that breaks the bus behind a name is drawn at full strength,
-    // outside the faded group, so a parked lane hides the bus as well as any.
-    out += `<text x="${shape.left}" y="${topLine}" ${SANS} font-size="11" font-weight="600" fill="none" stroke="${C.canvas}" stroke-width="4" stroke-linejoin="round">${name}</text>`
-    out += `<g${faded}>`
-    out +=
-      `<text x="${shape.left}" y="${topLine}" ${SANS} font-size="11" font-weight="600" fill="${isLit ? C.hl : C.text}">${name}</text>` +
-      (lane.live === undefined ? '' : `<text x="${shape.right}" y="${topLine}" text-anchor="end" ${MONO} font-size="11" fill="${C.muted}">${esc(cut(lane.live, shape.liveChars))}</text>`) +
-      `<path d="M${shape.bus + 32} ${padLine}H${shape.stage - 7}" fill="none" stroke="${C.wire}" stroke-width="1.5"/>` +
-      `<circle cx="${shape.bus}" cy="${padLine}" r="7" fill="${C.canvas}" stroke="${isLit ? C.accent : C.wire}" stroke-width="${isLit ? 2 : 1.5}"/>` +
-      `<text x="${shape.bus + 13}" y="${padLine + 4}" ${MONO} font-size="11" fill="${isLit ? C.accent : C.muted}">${lane.branches}</text>` +
-      `<circle cx="${shape.stage}" cy="${padLine}" r="7" fill="${C.canvas}" stroke="${stageInk}" stroke-width="1.5"${lane.staging === undefined ? ' stroke-dasharray="3 3"' : ''}/>` +
-      `<text x="${shape.stage + 14}" y="${padLine + 4}" ${SANS} font-size="11" fill="${C.muted}">${esc(cut(lane.staging === undefined ? words.when : `${words.when}${words.news === '' ? '' : ` · ${words.news}`}`, shape.stageChars))}</text>` +
-      (lane.isPassed === true && stale === false
-        ? `<path d="M${shape.stage - 3.5} ${padLine}l1.5 2 3.5 -4.5" fill="none" stroke="${C.accent}" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>`
-        : '')
-    out += `</g>`
-  }
-
-  return out
 }
