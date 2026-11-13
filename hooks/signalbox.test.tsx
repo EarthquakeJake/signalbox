@@ -50,9 +50,9 @@ async function ui_svg(ui: { find: (query: { type: 'Svg' }) => Promise<unknown> }
   return ui.find({ type: 'Svg' })
 }
 
-// The test engine serves no processes, so git always fails here: the board must
-// still draw, saying plainly that it found no repository.
-test('a folder with no git repository says so', async ($, on) => {
+// The test engine serves no processes, so git cannot run here at all: the board
+// must say that, rather than claim the folder holds no repository.
+test('a host that runs no commands says git did not run', async ($, on) => {
   on('command.register', () => ({ value: { command: 'signalbox' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
@@ -62,7 +62,7 @@ test('a folder with no git repository says so', async ($, on) => {
   await settle()
 
   const ui = await $.ui.mount(pane(60, 60))
-  expect(JSON.stringify(await ui.find({ type: 'Svg' }))).toContain('No git repository')
+  expect(JSON.stringify(await ui.find({ type: 'Svg' }))).toContain('Git did not run')
   await ui.unmount()
 })
 

@@ -56,7 +56,10 @@ export type Lane = {
 
 /** What git says about the folder this session works in. */
 export type Repo =
-  | { kind: 'none' }
+  /** Git ran and would not answer: `why` carries its own first words. */
+  | { kind: 'none'; why?: string }
+  /** Git could not be run at all here, which is not the same as having no repository. */
+  | { kind: 'blocked'; why: string; branch?: string }
   | {
       kind: 'repo'
       /** The branch checked out, or a short commit id when the head is detached. */

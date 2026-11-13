@@ -67,10 +67,47 @@ async function stageOf($: EngineInterface, cwd: string, trunkRef: string, path: 
   }
 }
 
+/** Why a call failed, in the few words the pane has room for. */
+const reasonOf = (failure: unknown): string => {
+  const said = failure instanceof Error ? failure.message : String(failure)
+
+  return said.replace(/\s+/g, ' ').trim().slice(0, 48) || 'no reason given'
+}
+
+/**
+ * The branch name from `.git/HEAD`, for a host where no command may run: it
+ * needs no process, so a pane there still says where you are.
+ */
+async function headOf($: EngineInterface, cwd: string): Promise<string | undefined> {
+  try {
+    const head = String(await $.fs.read(`${cwd}/.git/HEAD`)).trim()
+    const named = /^ref:\s*refs\/heads\/(.+)$/.exec(head)
+
+    return named?.[1] ?? (head === '' ? undefined : head.slice(0, 7))
+  } catch {
+    return undefined
+  }
+}
+
 /** Reads the branch picture: what is uncommitted, where this branch stands, and what the stages hold. */
 export async function readRepo($: EngineInterface, cwd: string, asked: string, stagingPath: string, stagingRef: string): Promise<Repo> {
-  const status = await git($, ['status', '--porcelain=v2', '--branch'], cwd)
-  if (status === undefined || status.exitCode !== 0) return NONE
+  // The first call apart, so that a host which runs no commands is told apart
+  // from a folder that holds no repository.
+  let status: { exitCode: number; stdout: string; stderr: string }
+  try {
+    const ran = await $.process.run(['git', 'status', '--porcelain=v2', '--branch'], { cwd, timeoutMs: 5000 })
+    status = { exitCode: ran.exitCode, stdout: ran.stdout, stderr: ran.stderr }
+  } catch (failure) {
+    const branch = await headOf($, cwd)
+
+    return { kind: 'blocked', why: reasonOf(failure), ...(branch === undefined ? {} : { branch }) }
+  }
+  // Git's own first words, so a refusal names itself rather than passing for an empty folder.
+  if (status.exitCode !== 0) {
+    const said = status.stderr.split('\n').map(line => line.trim()).find(line => line !== '')
+
+    return said === undefined ? NONE : { kind: 'none', why: said.replace(/^fatal:\s*/i, '').slice(0, 60) }
+  }
 
   let branch = ''
   let upstream = ''

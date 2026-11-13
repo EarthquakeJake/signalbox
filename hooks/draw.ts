@@ -169,10 +169,11 @@ export function drawBoard(b: Board, isWide: boolean, names: TrackNames, now: num
     count: dirty === 0 ? '' : String(dirty),
     isLit: dirty > 0,
   }
+  const hasWorkingStop = here !== undefined && here.staging === undefined
   const onBranch: Stop = {
     name: here === undefined ? 'Branch' : short(here.branch, 15),
     under:
-      dirty > 0
+      dirty > 0 && !hasWorkingStop
         ? `${dirty} uncommitted`
         : unpushed === undefined
           ? 'no remote'
@@ -188,7 +189,11 @@ export function drawBoard(b: Board, isWide: boolean, names: TrackNames, now: num
   // then staging, then live. Without one, it shows what git alone can say.
   const stops: [Stop, Stop, Stop] =
     here === undefined
-      ? [{ ...blank, name: 'Working' }, { ...blank, name: 'Branch' }, { ...blank, name: 'Trunk' }]
+      ? [
+          { ...blank, name: 'Working' },
+          { ...blank, name: repo !== undefined && repo.kind === 'blocked' && repo.branch !== undefined ? short(repo.branch, 15) : 'Branch' },
+          { ...blank, name: 'Trunk' },
+        ]
       : here.staging !== undefined
         ? [
             onBranch,
@@ -241,7 +246,7 @@ export function drawBoard(b: Board, isWide: boolean, names: TrackNames, now: num
       wire(isWide ? `M630 145H${shape.bus}` : `M220 310V318Q220 326 212 326H${shape.bus + 8}Q${shape.bus} 326 ${shape.bus} 334`, flow) +
       drawLanes(lanes, shape, now, C, SANS, MONO)
   }
-  track += `<text x="${L.caption.x}" y="${L.caption.y}" ${SANS} font-size="11" fill="${C.muted}">${here === undefined ? (repo === undefined ? 'Reading the repository…' : 'No git repository in this folder') : lanes.length > 0 ? `${lanes.length} tracks · ${esc(short(here.branch, isWide ? 30 : 22))}` : here.staging === undefined ? 'Release track' : esc(short(here.staging.subject, isWide ? 46 : 34))}</text>`
+  track += `<text x="${L.caption.x}" y="${L.caption.y}" ${SANS} font-size="11" fill="${C.muted}">${here === undefined ? (repo === undefined ? 'Reading the repository…' : repo.kind === 'blocked' ? `Git did not run: ${esc(short(repo.why, isWide ? 50 : 36))}` : repo.why === undefined ? 'No git repository in this folder' : `Git said: ${esc(short(repo.why, isWide ? 50 : 34))}`) : lanes.length > 0 ? `${lanes.length} tracks · ${esc(short(here.branch, isWide ? 30 : 22))}` : here.staging === undefined ? 'Release track' : esc(short(here.staging.subject, isWide ? 46 : 34))}</text>`
 
   const headY = isWide ? 16 : 24
   const head =
