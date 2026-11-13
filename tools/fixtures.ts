@@ -1,4 +1,4 @@
-import type { Board, Lane, Repo } from '../types'
+import type { Board, Clash, Lane, OpenBranch, Repo } from '../types'
 
 // Boards that have broken before, as plain data. The render harness draws each
 // one tall and wide, and the plugin tests run the layout check over the same set.
@@ -342,3 +342,54 @@ export const FIXTURES: Fixture[] = [
     }),
   }),
 ]
+
+/**
+ * Silkscreen with clashes: the repository's list, each branch's worst level and
+ * your branch's, as the Data lead's reading would give them.
+ */
+function withClashes(id: string, title: string, clashes: Clash[]): Fixture {
+  const base = FIXTURES.find(f => f.id === 'silkscreen-same-as-live') as Fixture
+  const repo = base.board.repo as Extract<Repo, { kind: 'repo' }>
+  const worst = (name: string): Clash['level'] | undefined => {
+    const levels = clashes.filter(c => c.a === name || c.b === name).map(c => c.level)
+    return levels.includes('conflict') ? 'conflict' : levels.length > 0 ? 'overlap' : undefined
+  }
+  const mark = (b: OpenBranch): OpenBranch => ({ ...b, clash: worst(b.name) })
+  return {
+    ...base,
+    id,
+    title,
+    board: {
+      ...base.board,
+      repo: {
+        ...repo,
+        clashes,
+        clash: worst(repo.branch),
+        loose: (repo.loose ?? []).map(mark),
+        lanes: (repo.lanes ?? []).map(lane => ({ ...lane, open: (lane.open ?? []).map(mark) })),
+      },
+    },
+  }
+}
+
+FIXTURES.push(
+  withClashes('clash-conflict', 'One conflict between two App branches', [
+    { a: 'app/board-check', b: 'app/routing-order', level: 'conflict', files: ['src/router.ts', 'src/board/check.ts'] },
+  ]),
+  withClashes('clash-overlap', 'Your branch overlaps a Platform branch', [
+    { a: 'claude/upbeat-volhard-48eb37', b: 'platform/branch-prefix', level: 'overlap', files: ['site/index.html'] },
+  ]),
+  withClashes('clash-uncommitted', 'Your uncommitted work overlaps an App branch', [
+    { a: 'claude/upbeat-volhard-48eb37', b: 'app/pins-tooltip', level: 'overlap', files: ['shared/tooltip.css', 'site/landing.css'], isUncommitted: true },
+  ]),
+  withClashes('clash-many', 'Many clashes, yours among them, worst first', [
+    { a: 'claude/upbeat-volhard-48eb37', b: 'app/routing-order', level: 'conflict', files: ['src/router.ts'], isUncommitted: true },
+    { a: 'app/board-check', b: 'app/routing-order', level: 'conflict', files: ['src/board/check.ts', 'src/router.ts'] },
+    { a: 'codex/private-alpha', b: 'claude/vigorous-khayyam-da3b47', level: 'conflict', files: ['cloud/deploy/very/long/path/to/the/alpha-config.yaml'] },
+    { a: 'app/pins-tooltip', b: 'app/board-check', level: 'overlap', files: ['src/board/pins.tsx'] },
+    { a: 'platform/branch-prefix', b: 'claude/vigorous-khayyam-da3b47', level: 'overlap', files: ['hooks/tracks.ts'] },
+    { a: 'claude/upbeat-volhard-48eb37', b: 'platform/branch-prefix', level: 'overlap', files: ['site/index.html'] },
+    { a: 'app/pins-tooltip', b: 'claude/vigorous-khayyam-da3b47', level: 'overlap', files: ['README.md'] },
+    { a: 'app/routing-order', b: 'platform/branch-prefix', level: 'overlap', files: ['package.json'] },
+  ]),
+)

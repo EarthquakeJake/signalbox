@@ -1,5 +1,5 @@
 import type { Board, Lane, StationId } from '../types'
-import { C, STATION_TONE, WIDE_HEIGHT, frame, isMadeUpName, agoOf, branchIn, esc, fit, fitMono, laneCard, laneColours, laneLine, stagingWords, text, widthOf } from './lanes'
+import { C, STATION_TONE, WIDE_HEIGHT, clashMark, clashOf, clashSummary, frame, isMadeUpName, line, agoOf, branchIn, esc, fit, fitMono, laneCard, laneColours, laneLine, stagingWords, text, widthOf } from './lanes'
 
 export { fit }
 
@@ -167,8 +167,11 @@ function tallRelease(b: Board, names: TrackNames, now: number, flow: Wear): { sv
       // The lane's name in its own type, then where you are, giving way to the marker on the right.
       const room = 368 - (marker === '' ? 0 : widthOf(marker) + 16)
       const name = fit(lit.name, Math.min(160, room / 2), 13, 600)
-      const tail = ` · you are here · ${plural(lit.branches, 'branch', 'branches')}`
-      caption = `<tspan font-size="13" font-weight="600" fill="${C.hl}">${esc(name)}</tspan>${esc(fit(tail, room - widthOf(name, 13, 600)))}`
+      // Where your branch clashes, that says more than the lane's branch count, so it takes its place, in its tone.
+      const yours = clashOf(here, here.branch, here.clash)
+      const tail = yours === undefined ? ` · you are here · ${plural(lit.branches, 'branch', 'branches')}` : ` · ${yours.words}`
+      const cut = esc(fit(tail, room - widthOf(name, 13, 600)))
+      caption = `<tspan font-size="13" font-weight="600" fill="${C.hl}">${esc(name)}</tspan>${yours === undefined ? cut : `<tspan fill="${yours.ink}">${cut}</tspan>`}`
       const words = stagingWords(lit, now)
       // Staging the same as live says so rather than its age, so a count behind the trunk is not read as live being stale.
       const isSameAsLive = lit.isStagingLive === true && lit.hasYours !== true
@@ -211,6 +214,13 @@ function tallRelease(b: Board, names: TrackNames, now: number, flow: Wear): { sv
     liveLabel = here.tag ?? names.live
   }
 
+  // Your branch's clash: in the lit lane's caption it replaced the branch count; otherwise it follows the caption.
+  const yourClash = here === undefined ? undefined : clashOf(here, here.branch, here.clash)
+  if (yourClash !== undefined && lit === undefined && here !== undefined) {
+    const room = 368 - (marker === '' ? 0 : widthOf(marker) + 16)
+    const head = caption === 'Your branch is in no lane' || caption === 'Release track' ? caption : ''
+    if (head !== '') caption = `${esc(head)}<tspan fill="${yourClash.ink}">${esc(fit(` · ${yourClash.words}`, room - widthOf(head)))}</tspan>`
+  }
   const cy = 368
   const dash = ' stroke-dasharray="3 3"'
   let out = wire(TALL.route, flow) + text(56, 352, caption)
@@ -223,6 +233,8 @@ function tallRelease(b: Board, names: TrackNames, now: number, flow: Wear): { sv
   out += `<circle cx="30" cy="${cy}" r="13" fill="${C.canvas}" stroke="${unknown ? C.faint : isBranchLit ? C.accent : C.wire}" stroke-width="${isBranchLit ? 2 : 1.5}"${unknown ? dash : ''}/>`
   if (ahead > 0) out += text(30, cy + 4, `+${ahead > 99 ? 99 : ahead}`, { font: 'mono', anchor: 'middle', fill: C.text })
   if (here?.unpushed !== undefined && here.unpushed > 0) out += `<circle cx="40" cy="${cy - 10}" r="3.5" fill="${C.port}"/>`
+  // A clash marks your branch's stop at its lower right, opposite the unpushed dot.
+  if (yourClash !== undefined) out += clashMark(44, cy + 12, yourClash.level)
 
   const stageStroke = stageState === 'none' ? C.faint : stageState === 'behind' ? C.hl : stageState === 'plain' ? C.wire : C.accent
   out += `<circle cx="220" cy="${cy}" r="13" fill="${C.canvas}" stroke="${stageStroke}" stroke-width="1.5"${stageState === 'none' ? dash : ''}/>`
@@ -285,7 +297,9 @@ function wideLanes(here: Here, lanes: readonly Lane[], now: number, flow: Wear):
   const count = `${lanes.length} ${lanes.length === 1 ? 'lane' : 'lanes'}${here.merged === undefined || here.merged === 0 ? '' : ` · ${here.merged} merged`}`.toUpperCase()
   let out = text(660, 28, count, { weight: 600, spacing: 0.6 })
   if (marker !== '') out += text(884, 28, esc(fit(marker, 224 - widthOf(count, 11, 600) - 16)), { anchor: 'end' })
-  out += yourBranch(here, 660, 46, 224)
+  // Your branch, with a clash mark before it where it clashes.
+  const yourClash = clashOf(here, here.branch, here.clash)
+  out += yourClash === undefined ? yourBranch(here, 660, 46, 224) : clashMark(665, 42, yourClash.level) + yourBranch(here, 676, 46, 208)
 
   const litAt = lit === undefined ? -1 : shown.indexOf(lit)
   if (litAt >= 0) {
@@ -297,7 +311,7 @@ function wideLanes(here: Here, lanes: readonly Lane[], now: number, flow: Wear):
   }
   const colours = laneColours(lanes)
   shown.forEach((lane, at) => {
-    out += laneLine(lane, rowAt(at), now, colours.get(lane) ?? C.muted, lane === lit)
+    out += laneLine(lane, rowAt(at), now, colours.get(lane) ?? C.muted, lane === lit, here)
   })
   if (shown.length < lanes.length) out += text(688, 266, `+${lanes.length - shown.length} more`)
 
@@ -461,8 +475,18 @@ export function drawBoard(b: Board, isWide: boolean, names: TrackNames, now: num
 
   const release = isWide ? { svg: wideRelease(b, names, now, flow) + wideFeed(b), h: WIDE.h } : tallRelease(b, names, now, flow)
 
+  // The clash summary where the eye lands first, beside NOW; nothing at all when the repository is clean.
+  // Wide, the Model chip sits 100 px to the right of NOW, so the two counts stack under it instead.
+  const summary = here === undefined ? [] : clashSummary(here.clashes)
+  const summarySvg =
+    summary.length === 0
+      ? ''
+      : isWide
+        ? summary.map((p, at) => text(16, 46 + at * 16, esc(fit(p.words.replace(/^ · /, ''), 100)), { fill: p.fill })).join('')
+        : line(60, 28, summary, 190)
   // In the wide layout the count stops short of the lanes column.
   const head =
+    summarySvg +
     text(16, 28, 'NOW', { weight: 600, spacing: 0.6 }) +
     text(isWide ? 630 : L.w - 16, 28, `${b.calls} tool call${b.calls === 1 ? '' : 's'} this turn`, { font: 'mono', anchor: 'end' })
 

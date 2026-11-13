@@ -316,20 +316,20 @@ export type Piece = { words: string; fill: string }
  * that overflows is cut to the room left, when it is the first or the room is
  * enough for a few words (40 px); otherwise it and the rest are left off.
  */
-export function line(x: number, y: number, pieces: Piece[], most: number): string {
+export function line(x: number, y: number, pieces: Piece[], most: number, size = 11): string {
   let used = 0
   let out = ''
   for (const [at, p] of pieces.entries()) {
-    const w = widthOf(p.words)
+    const w = widthOf(p.words, size)
     if (used + w > most) {
-      if (at === 0 || most - used >= 40) out += `<tspan fill="${p.fill}">${esc(fit(p.words, most - used))}</tspan>`
+      if (at === 0 || most - used >= 40) out += `<tspan fill="${p.fill}">${esc(fit(p.words, most - used, size))}</tspan>`
       break
     }
     out += `<tspan fill="${p.fill}">${esc(p.words)}</tspan>`
     used += w
   }
 
-  return text(x, y, out)
+  return text(x, y, out, { size })
 }
 
 /** The words under a lane's name about its staging. */
@@ -413,7 +413,7 @@ export function clashOf(repo: ClashSource, name: string, fallback?: 'conflict' |
   const other = found === undefined ? 'another branch' : branchSaid(repo, found.a === name ? found.b : found.a)
   const isUncommitted = found?.isUncommitted === true
   const verb = level === 'conflict' ? 'conflicts with' : 'same files as'
-  return { level, ink: clashInk(level), other, words: `${isUncommitted ? 'uncommitted, ' : ''}${verb} ${other}`, files: found?.files ?? [], isUncommitted }
+  return { level, ink: clashInk(level), other, words: `${verb} ${other}${isUncommitted ? ', uncommitted' : ''}`, files: found?.files ?? [], isUncommitted }
 }
 
 /** "1 conflict · 2 overlaps" as coloured pieces, or none at all when the repository is clean. */
@@ -494,7 +494,7 @@ export const STATION_TONE: Record<string, string> = {
  * the first line; what is in flight, the worst of its branches and its staging
  * on the second. The lit lane is the one you are working in.
  */
-export function laneLine(lane: Lane, cy: number, now: number, colour: string, isLit: boolean): string {
+export function laneLine(lane: Lane, cy: number, now: number, colour: string, isLit: boolean, source?: ClashSource): string {
   const right = 884
   let out = `<g${lane.isParked === true ? ' opacity="0.45"' : ''}>`
   out += laneTile(lane, 660, cy - 10, 20, colour, isLit)
@@ -510,7 +510,16 @@ export function laneLine(lane: Lane, cy: number, now: number, colour: string, is
   const flags = (lane.open ?? []).map(b => flagsOf(b, now))
   const far = flags.filter(f => f.some(flag => flag.tone === 'danger')).length
   const stale = flags.filter(f => f.some(flag => flag.tone === 'warn')).length
-  const worst = far > 0 ? { words: `${far} far behind`, tone: 'danger' as const } : stale > 0 ? { words: `${stale} stale`, tone: 'warn' as const } : undefined
+  // A clash among its branches outranks both: the wide board shows marks and counts, not who clashes with whom.
+  const levels = (lane.open ?? []).map(b => (source === undefined ? undefined : clashOf(source, b.name, b.clash)?.level) ?? b.clash)
+  const conflicts = levels.filter(l => l === 'conflict').length
+  const overlaps = levels.filter(l => l === 'overlap').length
+  const worst =
+    conflicts > 0
+      ? { words: `${conflicts} ${conflicts === 1 ? 'conflict' : 'conflicts'}`, tone: 'danger' as const }
+      : overlaps > 0
+        ? { words: `${overlaps} ${overlaps === 1 ? 'overlap' : 'overlaps'}`, tone: 'warn' as const }
+        : far > 0 ? { words: `${far} far behind`, tone: 'danger' as const } : stale > 0 ? { words: `${stale} stale`, tone: 'warn' as const } : undefined
   const pieces: Piece[] = [
     { words: lane.isParked === true ? 'Parked' : inFlight(lane), fill: C.muted },
     ...(worst === undefined ? [] : [{ words: ` · ${worst.words}`, fill: TONE[worst.tone].ink }]),

@@ -1,9 +1,13 @@
 import type { Board, Lane, OpenBranch, StationId } from '../types'
 import { NAMES } from './draw'
 import {
-  C, FAR_BEHIND, STATION_TONE, TONE, WIDE_HEIGHT, agoOf, branchIn, esc, fit, fitMono, frame, isMadeUpName,
-  laneColours, laneTile, liveWords, monoWidth, text, widthOf,
+  C, FAR_BEHIND, STATION_TONE, TONE, WIDE_HEIGHT, agoOf, branchIn, clashInk, clashMark, clashOf, clashSummary, esc, fit, fitMono, frame, isMadeUpName,
+  laneColours, laneTile, line as textLine, liveWords, monoWidth, text, widthOf,
 } from './lanes'
+import type { Piece } from './lanes'
+
+/** Words with their first letter raised, to start a line. */
+const capital = (words: string): string => words.charAt(0).toUpperCase() + words.slice(1)
 
 // The spine view, round 2: the lane tree. Main is the trunk; each lane joins it
 // with its tile, name, live release and UAT state, and its open branches hang
@@ -245,10 +249,17 @@ function treeTall(b: Board, here: Here, now: number): string {
   // Claude's band: 122 px, the ring clear of the band's edges and of the hairline under it.
   let out = claudeBand(b, 16, 18, W - 32) + hair(16, 424, 144)
   out += youLine(here, laneNames, 16, 170, W - 32)
+  // Your branch's clash, on its own line under where you are, in its tone; main moves down to make room.
+  const yours = clashOf(here, here.branch, here.clash)
+  if (yours !== undefined) out += clashMark(21, 183, yours.level) + text(32, 187, esc(fit(capital(yours.words), W - 32 - 16, 12)), { size: 12, fill: yours.ink })
   const trunkX = 26
-  let y = 194
+  let y = yours === undefined ? 194 : 210
   out += `<circle cx="${trunkX}" cy="${y + 8}" r="9" fill="${C.canvas}" stroke="${C.accent}" stroke-width="2"/>`
   out += text(46, y + 13, 'main', { font: 'mono', size: 14, weight: 500, fill: C.text })
+  // The clash summary on main's row, at the right: nothing when clean.
+  const summary = clashSummary(here.clashes)
+  const summaryW = summary.reduce((n, p) => n + widthOf(p.words, 12), 0)
+  if (summary.length > 0) out += textLine(424 - summaryW, y + 13, summary, summaryW + 1, 12)
   y += 38
   const trunkTop = y - 21
   let lastJoin = trunkTop
@@ -282,18 +293,27 @@ function treeTall(b: Board, here: Here, now: number): string {
         // Two lines a branch: what it is for, in full width, then its name, lead and distance.
         const ry = y + 12
         // Yours is in copper. Without a subject, the name leads in its place and is not said twice.
-        out += `<path d="M${stemX} ${ry}H68" fill="none" stroke="${g.colour}" stroke-opacity="0.5" stroke-width="1.75"/>`
+        const note = clashOf(here, item.b.name, item.b.clash)
+        out += `<path d="M${stemX} ${ry}H68" fill="none" stroke="${note === undefined ? g.colour : note.ink}" stroke-opacity="${note === undefined ? 0.5 : 0.9}" stroke-width="1.75"/>`
+        if (note !== undefined) out += clashMark(stemX, ry, note.level)
         const ink = item.isYours ? C.hl : C.text
         out += hasSubject(item.b)
           ? text(74, ry + 4.5, esc(fit(describe(item.b, laneNames), 424 - 74, 13)), { size: 13, fill: ink })
           : text(74, ry + 4.5, esc(branchIn(item.b.name, ((424 - 74) * 11) / 13)), { font: 'mono', size: 13, fill: ink })
         const bw = behindWords(item.b)
         const lead = item.b.ahead > 0 ? `+${item.b.ahead}` : ''
-        const name = hasSubject(item.b) ? `${branchIn(item.b.name, 424 - 74 - monoWidth(` ${lead}`) - (bw === undefined ? 0 : widthOf(` · ${bw.words}`)) - 4)} ` : ''
-        // The name and lead in mono, then the distance in its tone, as two texts so each is measured in its own face.
+        // A clash shares the second line with the name: the name keeps at most half of it.
+        const extra = (bw === undefined ? 0 : widthOf(` · ${bw.words}`)) + (note === undefined ? 0 : (424 - 74) / 2)
+        const name = hasSubject(item.b) ? `${branchIn(item.b.name, 424 - 74 - monoWidth(` ${lead}`) - extra - 4)} ` : ''
+        // The name and lead in mono, then the distance and any clash in their tones, as texts measured in their own faces.
         const second = `${name}${lead}`.trim()
         if (second !== '') out += text(74, ry + 21, esc(second), { font: 'mono', fill: item.isYours ? C.hl : C.muted })
-        if (bw !== undefined) out += text(74 + (second === '' ? 0 : monoWidth(second) + 4), ry + 21, esc(`${second === '' ? '' : '· '}${bw.words}`), { fill: bw.ink })
+        const after: Piece[] = [
+          ...(bw === undefined ? [] : [{ words: bw.words, fill: bw.ink }]),
+          ...(note === undefined ? [] : [{ words: note.words, fill: note.ink }]),
+        ].map((p, at) => (at === 0 && second === '' ? p : { ...p, words: `· ${p.words}` })).map((p, at) => (at > 0 ? { ...p, words: ` ${p.words}` } : p))
+        const afterX = 74 + (second === '' ? 0 : monoWidth(second) + 4)
+        if (after.length > 0) out += textLine(afterX, ry + 21, after, 424 - afterX)
         y += 42
       }
       y += 4
@@ -302,6 +322,26 @@ function treeTall(b: Board, here: Here, now: number): string {
     y += 12
   }
   const trunk = lastJoin > trunkTop ? `<path d="M${trunkX} ${trunkTop}V${lastJoin}" fill="none" stroke="${C.accent}" stroke-opacity="0.35" stroke-width="3" stroke-linecap="round"/>` : ''
+  // Every clash at the foot, one a line, worst first: the two branches, the level and the first file.
+  const clashes = here.clashes ?? []
+  if (clashes.length > 0) {
+    out += hair(16, 424, y)
+    y += 8
+    for (const c of clashes) {
+      y += 20
+      const pair = `${branchIn(c.a, 108)} × ${branchIn(c.b, 108)}`
+      const pairW = monoWidth(pair)
+      out += clashMark(21, y - 4, c.level) + text(32, y, esc(pair), { font: 'mono', fill: C.text })
+      const tail: Piece[] = [
+        // The file says more than whether it is uncommitted, so it comes first and is the last to be cut.
+        { words: c.level === 'conflict' ? 'conflict' : 'overlap', fill: clashInk(c.level) },
+        ...(c.files[0] === undefined ? [] : [{ words: ` · ${c.files[0]}`, fill: C.muted }]),
+        ...(c.isUncommitted === true ? [{ words: ' · uncommitted', fill: clashInk(c.level) }] : []),
+      ]
+      out += textLine(32 + pairW + 8, y, [{ words: '· ', fill: C.muted }, ...tail], 424 - (32 + pairW + 8))
+    }
+    y += 12
+  }
   // The merged branches at the foot.
   out += hair(16, 424, y) + merged(here, 16, y + 27, 13)
 
@@ -323,7 +363,14 @@ function wideLeft(b: Board, here: Here, laneNames: readonly string[], w: number)
   out += youHead(on, name, 16, 192)
   const work = here.dirty > 0 ? `${plural(here.dirty, 'file')} not committed` : 'Nothing to commit'
   out += text(16, 209, esc(fit(work, w, 12)), { size: 12, fill: here.dirty > 0 ? C.text : C.muted })
-  out += merged(here, 16, 244, 12)
+  // Your branch's clash, by its level alone, between where you are and the merged count.
+  const yours = clashOf(here, here.branch, here.clash)
+  if (yours !== undefined) {
+    const words = yours.level === 'conflict' ? 'Conflicts with a branch' : 'Same files as a branch'
+    // The narrow column has room for the level only; the tall spine and the board say who with, and whether uncommitted.
+    out += clashMark(21, 222, yours.level) + text(32, 226, esc(fit(words, w - 16, 12)), { size: 12, fill: yours.ink })
+  }
+  out += merged(here, 16, 250, 12)
 
   return out
 }
@@ -353,6 +400,9 @@ function treeWide(b: Board, here: Here, now: number): string {
   out += `<path d="M${left} ${mainY}H${right - 26}" fill="none" stroke="${C.accent}" stroke-opacity="0.35" stroke-width="3" stroke-linecap="round"/>`
   out += `<circle cx="${right - 17}" cy="${mainY}" r="9" fill="${C.canvas}" stroke="${C.accent}" stroke-width="2"/>`
   out += text(right - 34, mainY - 11, 'main', { font: 'mono', size: 13, weight: 500, anchor: 'end', fill: C.text })
+  // The clash summary at main's far end, above the line: nothing when clean.
+  const summary = clashSummary(here.clashes)
+  if (summary.length > 0) out += textLine(left, mainY - 11, summary, right - 80 - left, 12)
   if (total === 0) out += text(left, mainY + 34, 'No lanes and no open branches', { size: 12 })
   let x = left
   if (aside.length > 0) {
@@ -369,7 +419,8 @@ function treeWide(b: Board, here: Here, now: number): string {
       for (const item of g.rows.slice(0, 2)) {
         if (y > 230) break
         const bw = behindWords(item.b)
-        out += `<circle cx="${x + 5}" cy="${y + 4}" r="2.5" fill="${g.colour}"/>`
+        const mark = clashOf(here, item.b.name, item.b.clash)
+        out += mark === undefined ? `<circle cx="${x + 5}" cy="${y + 4}" r="2.5" fill="${g.colour}"/>` : clashMark(x + 5, y + 4, mark.level)
         out += text(x + 13, y + 8, esc(fit(describe(item.b, laneNames), w - 16, 11.5)), { size: 11.5, fill: item.isYours ? C.hl : C.text })
         if (bw !== undefined) out += text(x + 13, y + 22, esc(bw.words), { fill: bw.ink })
         y += 32
@@ -399,7 +450,9 @@ function treeWide(b: Board, here: Here, now: number): string {
     const shown = g.rows.length > 3 ? g.rows.slice(0, 2) : g.rows
     shown.forEach((item, at) => {
       const ty = y + 10 + at * 40
-      out += `<circle cx="${x + 5}" cy="${ty + 10}" r="2.5" fill="${g.colour}"/>`
+      // Wide shows a clash by its mark alone; the tall spine and the board say who with.
+      const mark = clashOf(here, item.b.name, item.b.clash)
+      out += mark === undefined ? `<circle cx="${x + 5}" cy="${ty + 10}" r="2.5" fill="${g.colour}"/>` : clashMark(x + 5, ty + 10, mark.level)
       const bw = behindWords(item.b)
       const lines = wrap(describe(item.b, laneNames), w - 16, 11.5, bw === undefined ? 2 : 1)
       lines.forEach((l, i) => {
