@@ -28,7 +28,7 @@ const num = (attrs: string, name: string, fallback = 0): number => {
 }
 
 const unescape = (text: string): string =>
-  text.replace(/<[^>]*>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&')
+  text.replace(/<[^>]*>/g, '').replace(/&#(\d+);/g, (_, code: string) => String.fromCharCode(Number(code))).replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&')
 
 /** How wide a text is drawn, in the board's pixels. */
 export function widthOf(text: string, size: number, isMono: boolean, isBold: boolean, spacing: number): number {

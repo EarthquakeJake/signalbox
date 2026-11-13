@@ -8,10 +8,7 @@ import { drawBoard } from './draw'
 // render harness's pictures and left to the Board track. They do not fail the
 // tests; anything new does. Remove a line once the drawing no longer has it.
 const KNOWN: Record<string, string[]> = {
-  'parked-lane_tall': ['"Wwwwwwwwww…" overlaps "12"', '"Wwwwwwwwww…" straddles the circle at 96,429'],
-  'no-lanes-staging_wide': ['"site-2026-11-13" runs off the board', '"UAT: the new landing page and the pricing tab…" runs off the board'],
-  'no-repo-why_wide': ['"Git said: fatal: detected dubious ownership in repository a…" runs off the board'],
-  'git-blocked_wide': ['"Git did not run: spawn git ENOENT: the command could not be found …" runs off the board'],
+  'no-lanes-staging_wide': ['"updated 3h ago" overlaps "site-2026-11-13"'],
   'files-running_tall': ['"Files" overlaps "99+"'],
 }
 
@@ -33,6 +30,8 @@ test('the layout check sees the faults it is for', () => {
   expect(layoutProblems(svg(t(10, 20, 'Website') + t(10, 40, 'App') + '<path d="M100 0V100" fill="none" stroke="#fff"/>'))).toEqual([])
   // Two texts on one line.
   expect(layoutProblems(svg(t(10, 20, 'Website') + t(40, 20, 'App')))).toHaveLength(1)
+  // A numbered entity is one letter wide, not six.
+  expect(layoutProblems(svg(t(10, 20, 'a&#160;b') + t(40, 20, 'App')))).toEqual([])
   // A wire through a word, and the same word with a halo breaking the wire.
   expect(layoutProblems(svg(t(90, 50, 'Website') + '<path d="M100 0V100" fill="none" stroke="#fff"/>'))).toHaveLength(1)
   expect(layoutProblems(svg(t(90, 50, 'Website', ' fill="none" stroke="#000"') + t(90, 50, 'Website') + '<path d="M100 0V100" fill="none" stroke="#fff"/>'))).toEqual([])
