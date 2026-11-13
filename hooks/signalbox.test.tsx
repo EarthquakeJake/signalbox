@@ -108,7 +108,7 @@ test('declared lanes are drawn in place of the single track', async ($, on) => {
   expect(svg).toContain('App')
   expect(svg).toContain('site-2026-11-13')
   expect(svg).toContain('not yet')
-  expect(svg).toContain('parked')
+  expect(svg).toContain('Parked')
   expect(svg).toContain('you are here')
   expect(svg).toContain('site/landing')
   await ui.unmount()

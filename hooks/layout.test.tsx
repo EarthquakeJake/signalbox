@@ -4,16 +4,11 @@ import { FIXTURES } from '../tools/fixtures'
 import { layoutProblems } from '../tools/layout'
 import { drawBoard } from './draw'
 
-// Faults the drawing already had when this check was written, seen in the
-// render harness's pictures and left to the Board track. They do not fail the
-// tests; anything new does. Remove a line once the drawing no longer has it.
-const KNOWN: Record<string, string[]> = {
-  'parked-lane_tall': ['"Wwwwwwwwww…" overlaps "12"', '"Wwwwwwwwww…" straddles the circle at 96,429'],
-  'no-lanes-staging_wide': ['"site-2026-11-13" runs off the board', '"UAT: the new landing page and the pricing tab…" runs off the board'],
-  'no-repo-why_wide': ['"Git said: fatal: detected dubious ownership in repository a…" runs off the board'],
-  'git-blocked_wide': ['"Git did not run: spawn git ENOENT: the command could not be found …" runs off the board'],
-  'files-running_tall': ['"Files" overlaps "99+"'],
-}
+// Faults the drawing is known to have, seen in the render harness's pictures
+// and left to the Board track. They do not fail the tests; anything new does.
+// Add a line only with a reason, and remove it once the drawing no longer has it.
+// The seven faults found in 0.7.0 were fixed with the lane cards.
+const KNOWN: Record<string, string[]> = {}
 
 for (const f of FIXTURES) {
   for (const isWide of [false, true]) {

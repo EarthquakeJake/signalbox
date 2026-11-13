@@ -128,4 +128,45 @@ export const FIXTURES: Fixture[] = [
     repo: repoOf({ lanes: silkscreen(0) }),
   }),
   make('idle', 'Idle board', { ...calm, model: undefined, context: undefined, repo: repoOf({ ahead: 0, dirty: 0, unpushed: undefined }) }),
+  make('lane-cards', 'Lane cards, Silkscreen as it stands', {
+    ...busy,
+    repo: repoOf({
+      branch: 'claude/upbeat-volhard-48eb37',
+      behind: 91,
+      merged: 4,
+      lanes: [
+        { id: 'app', name: 'App', branches: 0, isHere: false, open: [], staging: { updatedAt: NOW - 2 * H, subject: 'UAT', behind: 0 }, live: 'app-v3.14.0', isPassed: true },
+        {
+          id: 'website', name: 'Website', branches: 1, isHere: true, isGuessed: true, byFiles: 1, live: 'site-2026-11-13',
+          staging: { updatedAt: NOW - 2 * H, subject: 'UAT', behind: 0 }, hasYours: false,
+          open: [{ name: 'claude/upbeat-volhard-48eb37', ahead: 2, behind: 91, updatedAt: NOW - H, isByFiles: true }],
+        },
+        { id: 'platform', name: 'Platform', branches: 1, isHere: false, open: [{ name: 'platform/branch-prefix', ahead: 1, behind: 0, updatedAt: NOW - 26 * H }] },
+        { id: 'cloud', name: 'Cloud trial', branches: 1, isHere: false, isParked: true, open: [{ name: 'codex/private-alpha', ahead: 17, behind: 111, updatedAt: NOW - 20 * 24 * H, isByFiles: true }] },
+      ],
+    }),
+  }),
+  make('lane-cards-full', 'Lane cards, four lanes of four branches, none yours', {
+    ...calm,
+    repo: repoOf({
+      branch: 'claude/vigorous-khayyam-da3b47',
+      guess: 'none',
+      merged: 21,
+      lanes: ['App', 'Website and landing pages', 'Platform', 'Cloud trial'].map((name, at) => ({
+        id: name.toLowerCase().split(' ')[0],
+        name,
+        branches: 4 + at * 3,
+        isHere: false,
+        isParked: at === 3,
+        live: at === 2 ? undefined : ['app-v3.14.0-rc.12', 'site-2026-11-13', '', 'cloud-v0.1.0'][at],
+        staging: at === 1 ? undefined : { updatedAt: NOW - (at + 1) * 9 * H, subject: 'UAT', behind: at },
+        open: [
+          { name: 'claude/MMMWWWMMMWWWMMMWWWMMMWWW', ahead: 140, behind: 312, updatedAt: NOW - 40 * 24 * H },
+          { name: 'codex/private-alpha', ahead: 17, behind: 111, updatedAt: NOW - 3 * H },
+          { name: 'feature/a-rather-long-branch-name-for-this', ahead: 3, behind: 12, updatedAt: NOW - 30 * 24 * H },
+          { name: 'fix', ahead: 1, behind: 0, updatedAt: NOW - 60000 },
+        ],
+      })),
+    }),
+  }),
 ]
